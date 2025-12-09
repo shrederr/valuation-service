@@ -2,8 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Geo, Street, Topzone, ApartmentComplex, GeoTopzone } from '@libs/database';
-import { GeoType } from '@libs/common';
-import { GeoEventDto, StreetEventDto, TopzoneEventDto, ComplexEventDto, MultiLanguageFieldDto } from '../dto';
+import { GeoType, MultiLanguageDto } from '@libs/common';
+import { GeoEventDto, StreetEventDto, TopzoneEventDto, ComplexEventDto } from '../dto';
 
 @Injectable()
 export class GeoSyncService {
@@ -187,7 +187,7 @@ export class GeoSyncService {
 
   async handleComplexCreated(data: ComplexEventDto): Promise<void> {
     try {
-      const name: MultiLanguageFieldDto = typeof data.name === 'string' ? { uk: data.name } : data.name;
+      const name: MultiLanguageDto = typeof data.name === 'string' ? { uk: data.name } : data.name;
 
       const complex = this.complexRepository.create({
         id: data.id,
@@ -209,7 +209,7 @@ export class GeoSyncService {
 
   async handleComplexUpdated(data: ComplexEventDto): Promise<void> {
     try {
-      const name: MultiLanguageFieldDto = typeof data.name === 'string' ? { uk: data.name } : data.name;
+      const name: MultiLanguageDto = typeof data.name === 'string' ? { uk: data.name } : data.name;
 
       await this.complexRepository.update(data.id, {
         name,

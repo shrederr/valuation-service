@@ -1,67 +1,63 @@
-export interface MultiLanguageFieldDto {
-  uk: string;
-  ru?: string;
-  en?: string;
-}
+import { MultiLanguageDto } from '@libs/common';
 
 // DTO for Geo events from vector-api
 export class GeoEventDto {
-  id: number;
-  name: MultiLanguageFieldDto;
-  alias: string;
-  type: string;
-  lvl: number;
-  lft: number;
-  rgt: number;
-  lat?: number;
-  lng?: number;
-  bounds?: Record<string, number>;
-  declension?: MultiLanguageFieldDto;
+  public id: number;
+  public name: MultiLanguageDto;
+  public alias: string;
+  public type: string;
+  public lvl: number;
+  public lft: number;
+  public rgt: number;
+  public lat?: number;
+  public lng?: number;
+  public bounds?: Record<string, number>;
+  public declension?: MultiLanguageDto;
 }
 
 export class GeoDeletedEventDto {
-  id: number;
+  public id: number;
 }
 
 // DTO for Street events from vector-api
 export class StreetEventDto {
-  id: number;
-  name: MultiLanguageFieldDto;
-  alias: string;
-  geoId: number;
-  bounds?: Record<string, number>;
-  coordinates?: number[][];
+  public id: number;
+  public name: MultiLanguageDto;
+  public alias: string;
+  public geoId: number;
+  public bounds?: Record<string, number>;
+  public coordinates?: number[][];
 }
 
 export class StreetDeletedEventDto {
-  id: number;
+  public id: number;
 }
 
 // DTO for Topzone events from vector-api
 export class TopzoneEventDto {
-  id: number;
-  name: MultiLanguageFieldDto;
-  alias: string;
-  lat?: number;
-  lng?: number;
-  bounds?: Record<string, number>;
-  declension?: MultiLanguageFieldDto;
-  coordinates?: number[][][];
+  public id: number;
+  public name: MultiLanguageDto;
+  public alias: string;
+  public lat?: number;
+  public lng?: number;
+  public bounds?: Record<string, number>;
+  public declension?: MultiLanguageDto;
+  public coordinates?: number[][][];
 }
 
 export class TopzoneDeletedEventDto {
-  id: number;
+  public id: number;
 }
 
 // DTO for ApartmentComplex events from vector-api
 export class ComplexEventDto {
-  id: number;
-  name: string | MultiLanguageFieldDto;
-  geoId?: number;
-  lat?: number;
-  lng?: number;
+  public id: number;
+  public name: string | MultiLanguageDto;
+  public geoId?: number;
+  public lat?: number;
+  public lng?: number;
 }
 
 export class ComplexDeletedEventDto {
-  id: number;
+  public id: number;
 }

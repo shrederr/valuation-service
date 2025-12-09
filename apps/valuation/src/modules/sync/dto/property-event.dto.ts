@@ -1,67 +1,67 @@
 // DTO for CustomerProperty events from vector-api
 export class VectorPropertyEventDto {
-  id: number;
-  globalId: string;
-  dealType: string;
-  realtyType: string;
-  realtySubtype: string;
-  geoId: number;
-  streetId: number;
-  topzoneId: number;
-  complexId: number;
-  houseNumber: string;
-  houseNumberAdd: string;
-  apartmentNumber: string;
-  corps: string;
-  cadastralNumber: string;
-  lat: number;
-  lng: number;
-  attributes: Record<string, any>;
-  createdAt: Date;
-  updatedAt: Date;
+  public id: number;
+  public globalId: string;
+  public dealType: string;
+  public realtyType: string;
+  public realtySubtype: string;
+  public geoId: number;
+  public streetId: number;
+  public topzoneId: number;
+  public complexId: number;
+  public houseNumber: string;
+  public houseNumberAdd: string;
+  public apartmentNumber: string;
+  public corps: string;
+  public cadastralNumber: string;
+  public lat: number;
+  public lng: number;
+  public attributes: Record<string, unknown>;
+  public createdAt: Date;
+  public updatedAt: Date;
 }
 
 export class VectorPropertyArchivedEventDto {
-  id: number;
-  globalId: string;
-  archivedAt: Date;
+  public id: number;
+  public globalId: string;
+  public archivedAt: Date;
 }
 
 export class VectorPropertyUnarchivedEventDto {
-  id: number;
-  globalId: string;
+  public id: number;
+  public globalId: string;
 }
 
 // DTO for ExportedProperty events from api-property-aggregator
 export class AggregatorPropertyEventDto {
-  id: number;
-  externalId: string;
-  dealType: string;
-  realtyType: string;
-  realtyPlatform: string;
-  geoId: number;
-  streetId: number;
-  topzoneId: number;
-  complexId: number;
-  houseNumber: string;
-  lat: number;
-  lng: number;
-  price: number;
-  currency: string;
-  attributes: Record<string, any>;
-  seller: Record<string, any>;
-  description: Record<string, string>;
-  images: string[];
-  url: string;
-  hash: string;
-  isActive: boolean;
-  isExported: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-  deletedAt: Date;
+  public id: number;
+  public externalId: string;
+  public dealType: string;
+  public realtyType: string;
+  public realtyPlatform: string;
+  public geoId: number;
+  public streetId: number;
+  public topzoneId: number;
+  public complexId: number;
+  public houseNumber: string;
+  public lat: number;
+  public lng: number;
+  public price: number;
+  public currency: string;
+  public attributes: Record<string, unknown>;
+  public seller: Record<string, unknown>;
+  public description: Record<string, string>;
+  public images: string[];
+  public url: string;
+  public hash: string;
+  public isActive: boolean;
+  public isExported: boolean;
+  public createdAt: Date;
+  public updatedAt: Date;
+  public deletedAt: Date;
 }
 
 export class AggregatorPropertyDeletedEventDto {
-  id: number;
-  deletedAt: Date;
+  public id: number;
+  public deletedAt: Date;
 }
