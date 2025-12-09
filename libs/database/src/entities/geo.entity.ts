@@ -1,14 +1,8 @@
 import { Entity, Column, PrimaryColumn, OneToMany, Index } from 'typeorm';
-import { GeoType } from '@libs/common';
+import { GeoType, MultiLanguageDto } from '@libs/common';
 
 import { Street } from './street.entity';
 import { UnifiedListing } from './unified-listing.entity';
-
-export interface MultiLanguageField {
-  uk: string;
-  ru?: string;
-  en?: string;
-}
 
 @Entity('geo')
 @Index('idx_geo_nested_set', ['lft', 'rgt', 'lvl', 'type'])
@@ -18,7 +12,7 @@ export class Geo {
   public id: number;
 
   @Column({ type: 'jsonb' })
-  public name: MultiLanguageField;
+  public name: MultiLanguageDto;
 
   @Column({ type: 'text' })
   public alias: string;
@@ -45,7 +39,7 @@ export class Geo {
   public bounds?: Record<string, number>;
 
   @Column({ type: 'jsonb', nullable: true })
-  public declension?: MultiLanguageField;
+  public declension?: MultiLanguageDto;
 
   @OneToMany(() => Street, (street) => street.geo)
   public streets?: Street[];

@@ -1,6 +1,7 @@
 import { Entity, Column, PrimaryColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
+import { MultiLanguageDto } from '@libs/common';
 
-import { Geo, MultiLanguageField } from './geo.entity';
+import { Geo } from './geo.entity';
 import { UnifiedListing } from './unified-listing.entity';
 
 @Entity('apartment_complexes')
@@ -9,7 +10,7 @@ export class ApartmentComplex {
   public id: number;
 
   @Column({ type: 'jsonb' })
-  public name: MultiLanguageField;
+  public name: MultiLanguageDto;
 
   @Column({ name: 'geo_id', type: 'integer', nullable: true })
   public geoId?: number;

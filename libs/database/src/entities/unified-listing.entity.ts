@@ -1,7 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn, Index, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
-import { SourceType, DealType, RealtyType } from '@libs/common';
+import { SourceType, DealType, RealtyType, MultiLanguageDto } from '@libs/common';
 
-import { Geo, MultiLanguageField } from './geo.entity';
+import { Geo } from './geo.entity';
 import { Street } from './street.entity';
 import { Topzone } from './topzone.entity';
 import { ApartmentComplex } from './apartment-complex.entity';
@@ -133,7 +133,7 @@ export class UnifiedListing {
   public attributes?: Record<string, unknown>;
 
   @Column({ type: 'jsonb', nullable: true })
-  public description?: MultiLanguageField;
+  public description?: MultiLanguageDto;
 
   @Column({ name: 'cadastral_number', type: 'jsonb', nullable: true })
   public cadastralNumber?: Record<string, string>;

@@ -1,6 +1,6 @@
 import { Entity, Column, PrimaryColumn, OneToMany } from 'typeorm';
+import { MultiLanguageDto } from '@libs/common';
 
-import { MultiLanguageField } from './geo.entity';
 import { UnifiedListing } from './unified-listing.entity';
 
 @Entity('topzones')
@@ -9,7 +9,7 @@ export class Topzone {
   public id: number;
 
   @Column({ type: 'jsonb' })
-  public name: MultiLanguageField;
+  public name: MultiLanguageDto;
 
   @Column({ type: 'text' })
   public alias: string;
@@ -24,7 +24,7 @@ export class Topzone {
   public bounds?: Record<string, number>;
 
   @Column({ type: 'jsonb', nullable: true })
-  public declension?: MultiLanguageField;
+  public declension?: MultiLanguageDto;
 
   @Column({ type: 'jsonb', nullable: true })
   public coordinates?: number[][][];

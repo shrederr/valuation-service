@@ -1,6 +1,7 @@
 import { Entity, Column, PrimaryColumn, ManyToOne, OneToMany, JoinColumn, Index } from 'typeorm';
+import { MultiLanguageDto } from '@libs/common';
 
-import { Geo, MultiLanguageField } from './geo.entity';
+import { Geo } from './geo.entity';
 import { UnifiedListing } from './unified-listing.entity';
 
 @Entity('streets')
@@ -10,7 +11,7 @@ export class Street {
   public id: number;
 
   @Column({ type: 'jsonb' })
-  public name: MultiLanguageField;
+  public name: MultiLanguageDto;
 
   @Column({ type: 'text' })
   public alias: string;
