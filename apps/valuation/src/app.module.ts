@@ -4,7 +4,6 @@ import { DatabaseModule } from '@libs/database';
 import { RabbitMQModule } from '@libs/rabbitmq';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { SyncModule } from './modules/sync/sync.module';
 
 @Module({
   imports: [
@@ -14,7 +13,6 @@ import { SyncModule } from './modules/sync/sync.module';
     }),
     DatabaseModule,
     RabbitMQModule,
-    SyncModule,
   ],
   controllers: [AppController],
   providers: [AppService],
