@@ -5,65 +5,65 @@ import { LiquidityDto } from './liquidity.dto';
 
 export class PropertyInfoDto {
   @ApiProperty({ description: 'Property ID from source system' })
-  sourceId: number;
+  public sourceId: number;
 
   @ApiProperty({ description: 'Source system identifier' })
-  sourceType: string;
+  public sourceType: string;
 
   @ApiPropertyOptional({ description: 'Property address' })
-  address?: string;
+  public address?: string;
 
   @ApiProperty({ description: 'Property area in square meters' })
-  area: number;
+  public area: number;
 
   @ApiPropertyOptional({ description: 'Number of rooms' })
-  rooms?: number;
+  public rooms?: number;
 
   @ApiPropertyOptional({ description: 'Floor number' })
-  floor?: number;
+  public floor?: number;
 
   @ApiPropertyOptional({ description: 'Total floors in building' })
-  totalFloors?: number;
+  public totalFloors?: number;
 
   @ApiPropertyOptional({ description: 'Asking price if available' })
-  askingPrice?: number;
+  public askingPrice?: number;
 }
 
 export class ValuationReportDto {
   @ApiProperty({ description: 'Unique report ID' })
-  reportId: string;
+  public reportId: string;
 
   @ApiProperty({ description: 'Report generation timestamp' })
-  generatedAt: Date;
+  public generatedAt: Date;
 
   @ApiProperty({ type: PropertyInfoDto, description: 'Evaluated property info' })
-  property: PropertyInfoDto;
+  public property: PropertyInfoDto;
 
   @ApiProperty({ type: FairPriceDto, description: 'Fair price calculation results' })
-  fairPrice: FairPriceDto;
+  public fairPrice: FairPriceDto;
 
   @ApiProperty({ type: LiquidityDto, description: 'Liquidity assessment' })
-  liquidity: LiquidityDto;
+  public liquidity: LiquidityDto;
 
   @ApiProperty({ type: AnalogSearchResultDto, description: 'Analog search results' })
-  analogs: AnalogSearchResultDto;
+  public analogs: AnalogSearchResultDto;
 
   @ApiPropertyOptional({ description: 'Confidence level of valuation (0-1)' })
-  confidence?: number;
+  public confidence?: number;
 
   @ApiPropertyOptional({ description: 'Warnings or notes about the valuation' })
-  notes?: string[];
+  public notes?: string[];
 }
 
 export class ValuationRequestDto {
   @ApiProperty({ description: 'Source system (vector or aggregator)' })
-  sourceType: string;
+  public sourceType: string;
 
   @ApiProperty({ description: 'Property ID in source system' })
-  sourceId: number;
+  public sourceId: number;
 
   @ApiPropertyOptional({ description: 'Force recalculation even if cached' })
-  forceRefresh?: boolean;
+  public forceRefresh?: boolean;
 }
 
 export class BatchValuationRequestDto {
@@ -71,7 +71,7 @@ export class BatchValuationRequestDto {
     type: [ValuationRequestDto],
     description: 'List of properties to valuate',
   })
-  properties: ValuationRequestDto[];
+  public properties: ValuationRequestDto[];
 }
 
 export class BatchValuationResponseDto {
@@ -79,16 +79,16 @@ export class BatchValuationResponseDto {
     type: [ValuationReportDto],
     description: 'List of valuation reports',
   })
-  reports: ValuationReportDto[];
+  public reports: ValuationReportDto[];
 
   @ApiProperty({ description: 'Number of successful valuations' })
-  successCount: number;
+  public successCount: number;
 
   @ApiProperty({ description: 'Number of failed valuations' })
-  failedCount: number;
+  public failedCount: number;
 
   @ApiPropertyOptional({
     description: 'List of failed property IDs with error messages',
   })
-  failures?: Array<{ sourceType: string; sourceId: number; error: string }>;
+  public failures?: Array<{ sourceType: string; sourceId: number; error: string }>;
 }

@@ -3,58 +3,58 @@ import { SourceType } from '@libs/common';
 
 export class AnalogDto {
   @ApiProperty({ description: 'Unique identifier of the analog' })
-  id: string;
+  public id: string;
 
   @ApiProperty({ enum: SourceType, description: 'Source of the listing' })
-  source: SourceType;
+  public source: SourceType;
 
   @ApiPropertyOptional({ description: 'Full address' })
-  address?: string;
+  public address?: string;
 
   @ApiProperty({ description: 'Price in base currency' })
-  price: number;
+  public price: number;
 
   @ApiProperty({ description: 'Price per square meter' })
-  pricePerMeter: number;
+  public pricePerMeter: number;
 
   @ApiProperty({ description: 'Total area in square meters' })
-  area: number;
+  public area: number;
 
   @ApiPropertyOptional({ description: 'Number of rooms' })
-  rooms?: number;
+  public rooms?: number;
 
   @ApiPropertyOptional({ description: 'Floor number' })
-  floor?: number;
+  public floor?: number;
 
   @ApiPropertyOptional({ description: 'Total floors in building' })
-  totalFloors?: number;
+  public totalFloors?: number;
 
   @ApiPropertyOptional({ description: 'Property condition' })
-  condition?: string;
+  public condition?: string;
 
   @ApiPropertyOptional({ description: 'House type' })
-  houseType?: string;
+  public houseType?: string;
 
   @ApiProperty({ description: 'Match score (0-1)' })
-  matchScore: number;
+  public matchScore: number;
 
   @ApiPropertyOptional({ description: 'External URL' })
-  externalUrl?: string;
+  public externalUrl?: string;
 }
 
 export class AnalogSearchResultDto {
   @ApiProperty({ type: [AnalogDto], description: 'List of found analogs' })
-  analogs: AnalogDto[];
+  public analogs: AnalogDto[];
 
   @ApiProperty({ description: 'Total count of analogs found' })
-  totalCount: number;
+  public totalCount: number;
 
   @ApiProperty({
     enum: ['building', 'street', 'topzone', 'district', 'neighbor_districts', 'city'],
     description: 'Search radius used to find analogs',
   })
-  searchRadius: string;
+  public searchRadius: string;
 
   @ApiPropertyOptional({ description: 'Warning message if insufficient analogs' })
-  warning?: string;
+  public warning?: string;
 }

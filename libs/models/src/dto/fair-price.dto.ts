@@ -2,45 +2,45 @@ import { ApiProperty } from '@nestjs/swagger';
 
 export class PriceRangeDto {
   @ApiProperty({ description: 'Lower bound (Q1)' })
-  low: number;
+  public low: number;
 
   @ApiProperty({ description: 'Upper bound (Q3)' })
-  high: number;
+  public high: number;
 }
 
 export class PricePerMeterDto {
   @ApiProperty({ description: 'Median price per square meter' })
-  median: number;
+  public median: number;
 
   @ApiProperty({ description: 'Average price per square meter' })
-  average: number;
+  public average: number;
 }
 
 export class FairPriceDto {
   @ApiProperty({ description: 'Median price of analogs' })
-  median: number;
+  public median: number;
 
   @ApiProperty({ description: 'Average price of analogs' })
-  average: number;
+  public average: number;
 
   @ApiProperty({ description: 'Minimum price of analogs' })
-  min: number;
+  public min: number;
 
   @ApiProperty({ description: 'Maximum price of analogs' })
-  max: number;
+  public max: number;
 
   @ApiProperty({ type: PriceRangeDto, description: 'Price range (Q1-Q3)' })
-  range: PriceRangeDto;
+  public range: PriceRangeDto;
 
   @ApiProperty({ type: PricePerMeterDto, description: 'Price per meter statistics' })
-  pricePerMeter: PricePerMeterDto;
+  public pricePerMeter: PricePerMeterDto;
 
   @ApiProperty({
     enum: ['cheap', 'in_market', 'expensive'],
     description: 'Price verdict relative to market',
   })
-  verdict: 'cheap' | 'in_market' | 'expensive';
+  public verdict: 'cheap' | 'in_market' | 'expensive';
 
   @ApiProperty({ description: 'Number of analogs used for calculation' })
-  analogsCount: number;
+  public analogsCount: number;
 }

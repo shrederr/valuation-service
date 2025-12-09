@@ -2,40 +2,40 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class LiquidityCriterionDto {
   @ApiProperty({ description: 'Criterion name' })
-  name: string;
+  public name: string;
 
   @ApiProperty({ description: 'Criterion weight (0-1)' })
-  weight: number;
+  public weight: number;
 
   @ApiProperty({ description: 'Score for this criterion (0-10)' })
-  score: number;
+  public score: number;
 
   @ApiProperty({ description: 'Weighted score (weight * score)' })
-  weightedScore: number;
+  public weightedScore: number;
 
   @ApiPropertyOptional({ description: 'Explanation of score' })
-  explanation?: string;
+  public explanation?: string;
 }
 
 export class LiquidityDto {
   @ApiProperty({ description: 'Overall liquidity score (0-10)' })
-  score: number;
+  public score: number;
 
   @ApiProperty({
     enum: ['high', 'medium', 'low'],
     description: 'Liquidity level',
   })
-  level: 'high' | 'medium' | 'low';
+  public level: 'high' | 'medium' | 'low';
 
   @ApiProperty({
     type: [LiquidityCriterionDto],
     description: 'Breakdown by criteria',
   })
-  criteria: LiquidityCriterionDto[];
+  public criteria: LiquidityCriterionDto[];
 
   @ApiProperty({ description: 'Estimated days to sell' })
-  estimatedDaysToSell: number;
+  public estimatedDaysToSell: number;
 
   @ApiPropertyOptional({ description: 'Additional recommendations' })
-  recommendations?: string[];
+  public recommendations?: string[];
 }
