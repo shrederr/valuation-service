@@ -1,54 +1,51 @@
 version: '3.8'
 
+# NOTE: This service uses shared infrastructure from vector-api
+# Run vector-api docker-compose first:
+#   cd ../vector-api && docker-compose up -d vector_db rabbitmq redis
+#
+# Database: localhost:54325, user: vector, pass: vector, db: valuation
+# RabbitMQ: localhost:5672, user: vector, pass: vector
+# Redis: localhost:6379
+
 services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: valuation-postgres
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: valuation
+  valuation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: valuation-service
     ports:
-      - '5433:5432'
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres']
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - '3000:3000'
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - rabbitmq
+      - redis
+    networks:
+      - vector-network
+    restart: unless-stopped
+
+  # External services (connect to vector-api infrastructure)
+  postgres:
+    image: postgres:15
+    container_name: valuation-postgres-proxy
+    network_mode: host
+    entrypoint: ['echo', 'Using external PostgreSQL on port 54325']
 
   rabbitmq:
-    image: rabbitmq:3.12-management-alpine
-    container_name: valuation-rabbitmq
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-    ports:
-      - '5673:5672'
-      - '15673:15672'
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-    healthcheck:
-      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    image: rabbitmq:3.13-management
+    container_name: valuation-rabbitmq-proxy
+    network_mode: host
+    entrypoint: ['echo', 'Using external RabbitMQ on port 5672']
 
   redis:
-    image: redis:7-alpine
-    container_name: valuation-redis
-    ports:
-      - '6380:6379'
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    image: redis:latest
+    container_name: valuation-redis-proxy
+    network_mode: host
+    entrypoint: ['echo', 'Using external Redis on port 6379']
 
-volumes:
-  postgres_data:
-  rabbitmq_data:
-  redis_data:
+networks:
+  vector-network:
+    external: true
+    name: vector-api_default

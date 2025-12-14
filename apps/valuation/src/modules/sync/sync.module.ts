@@ -3,6 +3,8 @@ import { DatabaseModule } from '@libs/database';
 import { RabbitMQModule } from '@libs/rabbitmq';
 import { GeoSyncService } from './services/geo-sync.service';
 import { PropertySyncService } from './services/property-sync.service';
+import { InitialSyncService } from './services/initial-sync.service';
+import { ConsumerControlService } from './services/consumer-control.service';
 import { GeoSyncConsumer } from './consumers/geo-sync.consumer';
 import { PropertySyncConsumer } from './consumers/property-sync.consumer';
 import { VectorPropertyMapper } from './mappers/vector-property.mapper';
@@ -14,6 +16,8 @@ import { AggregatorPropertyMapper } from './mappers/aggregator-property.mapper';
     // Services
     GeoSyncService,
     PropertySyncService,
+    InitialSyncService,
+    ConsumerControlService,
     // Consumers
     GeoSyncConsumer,
     PropertySyncConsumer,
@@ -21,6 +25,6 @@ import { AggregatorPropertyMapper } from './mappers/aggregator-property.mapper';
     VectorPropertyMapper,
     AggregatorPropertyMapper,
   ],
-  exports: [GeoSyncService, PropertySyncService],
+  exports: [GeoSyncService, PropertySyncService, InitialSyncService, ConsumerControlService],
 })
 export class SyncModule {}

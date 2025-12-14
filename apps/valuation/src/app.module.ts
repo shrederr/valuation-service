@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { DatabaseModule } from '@libs/database';
 import { RabbitMQModule } from '@libs/rabbitmq';
+import { SyncModule } from './modules/sync/sync.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -13,6 +14,7 @@ import { AppService } from './app.service';
     }),
     DatabaseModule,
     RabbitMQModule,
+    SyncModule,
   ],
   controllers: [AppController],
   providers: [AppService],
