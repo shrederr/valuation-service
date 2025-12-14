@@ -128,7 +128,7 @@ export class InitialSyncService implements OnModuleInit {
     let totalSynced = 0;
 
     while (true) {
-      const response = await this.fetchFromVector<VectorGeoDto>('/geo/tree/1', { page, pageSize: this.batchSize });
+      const response = await this.fetchFromVector<VectorGeoDto>('/geo/list', { page, perPage: this.batchSize });
 
       if (!response.items || response.items.length === 0) {
         break;
@@ -182,7 +182,7 @@ export class InitialSyncService implements OnModuleInit {
     let totalSynced = 0;
 
     while (true) {
-      const response = await this.fetchFromVector<VectorStreetDto>('/geo/street', { page, pageSize: this.batchSize });
+      const response = await this.fetchFromVector<VectorStreetDto>('/geo/street', { page, perPage: this.batchSize });
 
       if (!response.items || response.items.length === 0) {
         break;
@@ -231,7 +231,7 @@ export class InitialSyncService implements OnModuleInit {
     let totalSynced = 0;
 
     while (true) {
-      const response = await this.fetchFromVector<VectorTopzoneDto>('/geo/topzone', { page, pageSize: this.batchSize });
+      const response = await this.fetchFromVector<VectorTopzoneDto>('/geo/topzone', { page, perPage: this.batchSize });
 
       if (!response.items || response.items.length === 0) {
         break;
@@ -282,7 +282,7 @@ export class InitialSyncService implements OnModuleInit {
     let totalSynced = 0;
 
     while (true) {
-      const response = await this.fetchFromVector<VectorComplexDto>('/apartment-complex', { page, pageSize: this.batchSize });
+      const response = await this.fetchFromVector<VectorComplexDto>('/apartment-complexes/list', { page, perPage: this.batchSize });
 
       if (!response.items || response.items.length === 0) {
         break;
@@ -334,7 +334,7 @@ export class InitialSyncService implements OnModuleInit {
     let totalSynced = 0;
 
     while (true) {
-      const response = await this.fetchFromVector<VectorPropertyDto>('/properties', { page, pageSize: this.batchSize });
+      const response = await this.fetchFromVector<VectorPropertyDto>('/properties', { page, perPage: this.batchSize });
 
       if (!response.items || response.items.length === 0) {
         break;
@@ -408,7 +408,7 @@ export class InitialSyncService implements OnModuleInit {
     let totalSynced = 0;
 
     while (true) {
-      const response = await this.fetchFromAggregator<AggregatorPropertyDto>('/properties', { page, pageSize: this.batchSize });
+      const response = await this.fetchFromAggregator<AggregatorPropertyDto>('/properties/list', { page, perPage: this.batchSize });
 
       if (!response.items || response.items.length === 0) {
         break;
