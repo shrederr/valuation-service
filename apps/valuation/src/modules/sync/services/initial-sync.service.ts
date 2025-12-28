@@ -39,8 +39,9 @@ export class InitialSyncService implements OnModuleInit {
     @InjectRepository(UnifiedListing)
     private readonly listingRepository: Repository<UnifiedListing>,
   ) {
-    this.vectorApiUrl = this.configService.getOrThrow<string>('VECTOR_API_URL');
-    this.aggregatorApiUrl = this.configService.getOrThrow<string>('AGGREGATOR_API_URL');
+    // Vector API is optional - geo data should be imported directly from local DB
+    this.vectorApiUrl = this.configService.get<string>('VECTOR_API_URL') || '';
+    this.aggregatorApiUrl = this.configService.get<string>('AGGREGATOR_API_URL') || '';
     this.syncOnStartup = this.configService.get<string>('SYNC_ON_STARTUP') === 'true';
     this.skipInitialSync = this.configService.get<string>('SKIP_INITIAL_SYNC') === 'true';
     this.batchSize = this.configService.get<number>('SYNC_BATCH_SIZE') || 100;
@@ -73,10 +74,10 @@ export class InitialSyncService implements OnModuleInit {
   }
 
   /**
-   * Check if the database is empty (no geo records).
+   * Check if listings are empty (geo data is imported separately from local DB).
    */
   async isDatabaseEmpty(): Promise<boolean> {
-    const count = await this.geoRepository.count();
+    const count = await this.listingRepository.count();
     return count === 0;
   }
 
@@ -98,18 +99,15 @@ export class InitialSyncService implements OnModuleInit {
     await this.consumerControl.pauseConsumers();
 
     try {
-      // Sync geo data first (order matters due to relations)
-      await this.syncGeo();
-      await this.syncStreets();
-      await this.syncTopzones();
-      await this.syncComplexes();
+      // NOTE: Geo data (geo, streets, topzones, apartment_complexes) must be imported
+      // separately from local DB using pg_dump/pg_restore before running this sync.
+      // This sync only imports properties from aggregator API.
 
-      // Sync properties
-      await this.syncVectorProperties();
+      // Sync properties from aggregator
       await this.syncAggregatorProperties();
 
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-      this.logger.log(`Full initial sync completed in ${duration}s`);
+      this.logger.log(`Initial sync completed in ${duration}s`);
     } catch (error) {
       this.logger.error('Initial sync failed', error instanceof Error ? error.stack : undefined);
       throw error;
