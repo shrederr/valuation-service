@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -128,7 +128,7 @@ export class InitialSyncService implements OnModuleInit {
     let totalSynced = 0;
 
     while (true) {
-      const response = await this.fetchFromVector<VectorGeoDto>('/geo/list', { page, perPage: this.batchSize });
+      const response = await this.fetchFromVector<VectorGeoDto>('geo/list', { page, perPage: this.batchSize });
 
       if (!response.items || response.items.length === 0) {
         break;
@@ -158,10 +158,10 @@ export class InitialSyncService implements OnModuleInit {
       alias: data.alias,
       type: data.type as GeoType,
       lvl: data.lvl,
-      lft: data.lft,
-      rgt: data.rgt,
-      lat: data.lat,
-      lng: data.lng,
+      lft: data.lft ?? 0,
+      rgt: data.rgt ?? 0,
+      lat: this.extractNumber(data.lat),
+      lng: this.extractNumber(data.lng),
       bounds: data.bounds,
       declension: data.declension,
       syncedAt: new Date(),
@@ -182,7 +182,7 @@ export class InitialSyncService implements OnModuleInit {
     let totalSynced = 0;
 
     while (true) {
-      const response = await this.fetchFromVector<VectorStreetDto>('/geo/street', { page, perPage: this.batchSize });
+      const response = await this.fetchFromVector<VectorStreetDto>('geo/street', { page, perPage: this.batchSize });
 
       if (!response.items || response.items.length === 0) {
         break;
@@ -231,7 +231,7 @@ export class InitialSyncService implements OnModuleInit {
     let totalSynced = 0;
 
     while (true) {
-      const response = await this.fetchFromVector<VectorTopzoneDto>('/geo/topzone', { page, perPage: this.batchSize });
+      const response = await this.fetchFromVector<VectorTopzoneDto>('geo/topzone', { page, perPage: this.batchSize });
 
       if (!response.items || response.items.length === 0) {
         break;
@@ -259,8 +259,8 @@ export class InitialSyncService implements OnModuleInit {
       id: data.id,
       name: data.name,
       alias: data.alias,
-      lat: data.lat,
-      lng: data.lng,
+      lat: this.extractNumber(data.lat),
+      lng: this.extractNumber(data.lng),
       bounds: data.bounds,
       declension: data.declension,
       coordinates: data.coordinates,
@@ -282,7 +282,7 @@ export class InitialSyncService implements OnModuleInit {
     let totalSynced = 0;
 
     while (true) {
-      const response = await this.fetchFromVector<VectorComplexDto>('/apartment-complexes/list', { page, perPage: this.batchSize });
+      const response = await this.fetchFromVector<VectorComplexDto>('apartment-complexes/list', { page, perPage: this.batchSize });
 
       if (!response.items || response.items.length === 0) {
         break;
@@ -313,8 +313,8 @@ export class InitialSyncService implements OnModuleInit {
       name,
       geoId: data.geoId,
       topzoneId: data.topzoneId,
-      lat: data.lat,
-      lng: data.lng,
+      lat: this.extractNumber(data.lat),
+      lng: this.extractNumber(data.lng),
       type: data.type,
       syncedAt: new Date(),
     };
@@ -334,7 +334,7 @@ export class InitialSyncService implements OnModuleInit {
     let totalSynced = 0;
 
     while (true) {
-      const response = await this.fetchFromVector<VectorPropertyDto>('/properties', { page, perPage: this.batchSize });
+      const response = await this.fetchFromVector<VectorPropertyDto>('properties/list', { page, perPage: this.batchSize });
 
       if (!response.items || response.items.length === 0) {
         break;
@@ -374,17 +374,17 @@ export class InitialSyncService implements OnModuleInit {
       houseNumber: data.houseNumber,
       apartmentNumber: data.apartmentNumber ? parseInt(data.apartmentNumber, 10) : undefined,
       corps: data.corps,
-      lat: data.lat,
-      lng: data.lng,
+      lat: this.extractNumber(data.lat),
+      lng: this.extractNumber(data.lng),
       price: this.extractNumber(data.attributes?.price),
       currency: (data.attributes?.currency as string) || 'USD',
-      pricePerMeter: this.extractNumber(data.attributes?.pricePerMeter),
-      totalArea: this.extractNumber(data.attributes?.totalArea),
-      livingArea: this.extractNumber(data.attributes?.livingArea),
-      kitchenArea: this.extractNumber(data.attributes?.kitchenArea),
-      rooms: this.extractNumber(data.attributes?.rooms),
-      floor: this.extractNumber(data.attributes?.floor),
-      totalFloors: this.extractNumber(data.attributes?.totalFloors),
+      pricePerMeter: this.extractNumber(data.attributes?.price_sqr ?? data.attributes?.pricePerMeter),
+      totalArea: this.extractNumber(data.attributes?.square_total ?? data.attributes?.totalArea),
+      livingArea: this.extractNumber(data.attributes?.square_living ?? data.attributes?.livingArea),
+      kitchenArea: this.extractNumber(data.attributes?.square_kitchen ?? data.attributes?.kitchenArea),
+      rooms: this.extractInteger(data.attributes?.rooms_count ?? data.attributes?.rooms),
+      floor: this.extractInteger(data.attributes?.floor),
+      totalFloors: this.extractInteger(data.attributes?.floors_count ?? data.attributes?.totalFloors),
       condition: data.attributes?.condition as string,
       houseType: data.attributes?.houseType as string,
       attributes: data.attributes,
@@ -408,7 +408,7 @@ export class InitialSyncService implements OnModuleInit {
     let totalSynced = 0;
 
     while (true) {
-      const response = await this.fetchFromAggregator<AggregatorPropertyDto>('/properties/list', { page, perPage: this.batchSize });
+      const response = await this.fetchFromAggregator<AggregatorPropertyDto>('properties/list', { page, perPage: this.batchSize });
 
       if (!response.items || response.items.length === 0) {
         break;
@@ -434,27 +434,51 @@ export class InitialSyncService implements OnModuleInit {
       where: { sourceType: SourceType.AGGREGATOR, sourceId: data.id },
     });
 
+    // Validate geo references - aggregator may use different IDs
+    // Set to null if reference doesn't exist in our database
+    let validGeoId: number | undefined = undefined;
+    let validStreetId: number | undefined = undefined;
+    let validTopzoneId: number | undefined = undefined;
+    let validComplexId: number | undefined = undefined;
+
+    if (data.geoId) {
+      const geoExists = await this.geoRepository.findOne({ where: { id: data.geoId }, select: ['id'] });
+      validGeoId = geoExists ? data.geoId : undefined;
+    }
+    if (data.streetId) {
+      const streetExists = await this.streetRepository.findOne({ where: { id: data.streetId }, select: ['id'] });
+      validStreetId = streetExists ? data.streetId : undefined;
+    }
+    if (data.topzoneId) {
+      const topzoneExists = await this.topzoneRepository.findOne({ where: { id: data.topzoneId }, select: ['id'] });
+      validTopzoneId = topzoneExists ? data.topzoneId : undefined;
+    }
+    if (data.complexId) {
+      const complexExists = await this.complexRepository.findOne({ where: { id: data.complexId }, select: ['id'] });
+      validComplexId = complexExists ? data.complexId : undefined;
+    }
+
     const listingData = {
       sourceType: SourceType.AGGREGATOR,
       sourceId: data.id,
       dealType: this.mapDealType(data.dealType),
       realtyType: this.mapRealtyType(data.realtyType),
-      geoId: data.geoId,
-      streetId: data.streetId,
-      topzoneId: data.topzoneId,
-      complexId: data.complexId,
+      geoId: validGeoId,
+      streetId: validStreetId,
+      topzoneId: validTopzoneId,
+      complexId: validComplexId,
       houseNumber: data.houseNumber,
-      lat: data.lat,
-      lng: data.lng,
+      lat: this.extractNumber(data.lat),
+      lng: this.extractNumber(data.lng),
       price: data.price,
       currency: data.currency || 'USD',
-      pricePerMeter: this.extractNumber(data.attributes?.pricePerMeter),
-      totalArea: this.extractNumber(data.attributes?.totalArea),
-      livingArea: this.extractNumber(data.attributes?.livingArea),
-      kitchenArea: this.extractNumber(data.attributes?.kitchenArea),
-      rooms: this.extractNumber(data.attributes?.rooms),
-      floor: this.extractNumber(data.attributes?.floor),
-      totalFloors: this.extractNumber(data.attributes?.totalFloors),
+      pricePerMeter: this.extractNumber(data.attributes?.price_sqr ?? data.attributes?.pricePerMeter),
+      totalArea: this.extractNumber(data.attributes?.square_total ?? data.attributes?.totalArea),
+      livingArea: this.extractNumber(data.attributes?.square_living ?? data.attributes?.livingArea),
+      kitchenArea: this.extractNumber(data.attributes?.square_kitchen ?? data.attributes?.kitchenArea),
+      rooms: this.extractInteger(data.attributes?.rooms_count ?? data.attributes?.rooms),
+      floor: this.extractInteger(data.attributes?.floor),
+      totalFloors: this.extractInteger(data.attributes?.floors_count ?? data.attributes?.totalFloors),
       condition: data.attributes?.condition as string,
       houseType: data.attributes?.houseType as string,
       attributes: data.attributes,
@@ -574,5 +598,11 @@ export class InitialSyncService implements OnModuleInit {
       return isNaN(num) ? undefined : num;
     }
     return undefined;
+  }
+
+  private extractInteger(value: unknown): number | undefined {
+    const num = this.extractNumber(value);
+    if (num === undefined) return undefined;
+    return Math.floor(num);
   }
 }

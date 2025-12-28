@@ -13,6 +13,9 @@ export class PropertyInfoDto {
   @ApiPropertyOptional({ description: 'Property address' })
   public address?: string;
 
+  @ApiPropertyOptional({ description: 'Apartment complex name (ЖК)' })
+  public complexName?: string;
+
   @ApiProperty({ description: 'Property area in square meters' })
   public area: number;
 

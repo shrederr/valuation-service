@@ -31,3 +31,9 @@ coverage/
 # Misc
 *.tgz
 
+
+# Large files
+dumps/
+*.sql
+*.dump
+test-results/

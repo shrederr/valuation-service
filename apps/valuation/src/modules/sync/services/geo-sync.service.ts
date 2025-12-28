@@ -191,11 +191,14 @@ export class GeoSyncService {
 
       const complex = this.complexRepository.create({
         id: data.id,
-        name,
+        nameUk: name.uk || '',
+        nameRu: name.ru || name.uk || '',
+        nameEn: name.en,
+        nameNormalized: (name.uk || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/gi, ''),
         geoId: data.geoId,
         lat: data.lat,
         lng: data.lng,
-        syncedAt: new Date(),
+        source: 'geovector',
       });
 
       await this.complexRepository.save(complex);
@@ -212,11 +215,13 @@ export class GeoSyncService {
       const name: MultiLanguageDto = typeof data.name === 'string' ? { uk: data.name } : data.name;
 
       await this.complexRepository.update(data.id, {
-        name,
+        nameUk: name.uk || '',
+        nameRu: name.ru || name.uk || '',
+        nameEn: name.en,
+        nameNormalized: (name.uk || '').toLowerCase().replace(/[^a-zа-яіїєґ0-9]/gi, ''),
         geoId: data.geoId,
         lat: data.lat,
         lng: data.lng,
-        syncedAt: new Date(),
       });
       const displayName = typeof data.name === 'string' ? data.name : data.name?.uk;
       this.logger.log(`Complex updated: ${data.id} - ${displayName}`);

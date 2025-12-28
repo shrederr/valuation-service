@@ -1,0 +1,11 @@
+node_modules
+.git
+dumps
+*.sql
+*.dump
+test-results
+coverage
+.nyc_output
+*.log
+.env*
+!.env.example

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Оцінка ліквідності нерухомості</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Оцінка ліквідності нерухомості</h1>
+      <p class="subtitle">Сервіс аналізу ринкової вартості та ліквідності об'єктів</p>
+    </header>
+
+    <section class="search-section">
+      <div class="search-box">
+        <div class="search-tabs">
+          <button class="tab-btn active" data-tab="id">По ID</button>
+          <button class="tab-btn" data-tab="url">По URL</button>
+        </div>
+
+        <div class="tab-content active" id="tab-id">
+          <input type="text" id="objectId" placeholder="Введіть ID об'єкта (UUID або sourceId)">
+          <select id="sourceType">
+            <option value="">Авто</option>
+            <option value="aggregator">Aggregator</option>
+            <option value="vector">Vector</option>
+          </select>
+        </div>
+
+        <div class="tab-content" id="tab-url">
+          <input type="text" id="externalUrl" placeholder="Введіть URL об'єкта (rieltor.ua, dom.ria.com, olx.ua)">
+        </div>
+
+        <button id="searchBtn" class="btn-primary">
+          <span class="btn-text">Оцінити</span>
+          <span class="btn-loader hidden"></span>
+        </button>
+      </div>
+    </section>
+
+    <section id="error" class="error-section hidden">
+      <div class="error-box">
+        <span class="error-icon">⚠️</span>
+        <span class="error-message"></span>
+      </div>
+    </section>
+
+    <section id="results" class="results-section hidden">
+      <!-- Property Info -->
+      <div class="card property-card">
+        <h2>Об'єкт</h2>
+        <div class="property-info">
+          <div class="property-main">
+            <div class="property-address" id="propertyAddress">-</div>
+            <div class="property-complex hidden" id="propertyComplex">
+              <span class="complex-icon">🏢</span>
+              <span class="complex-name"></span>
+            </div>
+            <div class="property-details">
+              <span class="detail" id="propertyArea"><strong>Площа:</strong> -</span>
+              <span class="detail" id="propertyRooms"><strong>Кімнат:</strong> -</span>
+              <span class="detail" id="propertyFloor"><strong>Поверх:</strong> -</span>
+            </div>
+          </div>
+          <div class="property-price">
+            <div class="price-label">Запитувана ціна</div>
+            <div class="price-value" id="askingPrice">-</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Liquidity Score -->
+      <div class="card liquidity-card">
+        <h2>Ліквідність</h2>
+        <div class="liquidity-main">
+          <div class="score-circle">
+            <svg viewBox="0 0 100 100">
+              <circle class="score-bg" cx="50" cy="50" r="45"></circle>
+              <circle class="score-progress" cx="50" cy="50" r="45" id="scoreCircle"></circle>
+            </svg>
+            <div class="score-value" id="liquidityScore">-</div>
+          </div>
+          <div class="liquidity-info">
+            <div class="liquidity-level" id="liquidityLevel">-</div>
+            <div class="liquidity-days">
+              <span class="days-label">Орієнтовний термін продажу:</span>
+              <span class="days-value" id="estimatedDays">- днів</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="criteria-grid" id="criteriaGrid">
+          <!-- Criteria will be inserted here -->
+        </div>
+
+        <div class="recommendations" id="recommendations">
+          <!-- Recommendations will be inserted here -->
+        </div>
+      </div>
+
+      <!-- Fair Price -->
+      <div class="card fair-price-card">
+        <h2>Справедлива ціна</h2>
+        <div class="fair-price-main">
+          <div class="price-stats">
+            <div class="stat-item">
+              <div class="stat-label">Медіана</div>
+              <div class="stat-value" id="medianPrice">-</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-label">Середня</div>
+              <div class="stat-value" id="averagePrice">-</div>
+            </div>
+            <div class="stat-item range">
+              <div class="stat-label">Діапазон</div>
+              <div class="stat-value" id="priceRange">-</div>
+            </div>
+          </div>
+
+          <div class="price-meter">
+            <div class="meter-bar">
+              <div class="meter-range" id="meterRange"></div>
+              <div class="meter-marker" id="meterMarker"></div>
+            </div>
+            <div class="meter-labels">
+              <span id="meterMin">-</span>
+              <span id="meterMax">-</span>
+            </div>
+          </div>
+
+          <div class="verdict-box" id="verdictBox">
+            <span class="verdict-icon" id="verdictIcon"></span>
+            <span class="verdict-text" id="verdictText">-</span>
+          </div>
+        </div>
+
+        <div class="price-per-meter">
+          <h3>Ціна за м²</h3>
+          <div class="ppm-stats">
+            <div class="ppm-item">
+              <span class="ppm-label">Об'єкт:</span>
+              <span class="ppm-value" id="ppmObject">-</span>
+            </div>
+            <div class="ppm-item">
+              <span class="ppm-label">Ринок (медіана):</span>
+              <span class="ppm-value" id="ppmMarket">-</span>
+            </div>
+            <div class="ppm-item">
+              <span class="ppm-label">Різниця:</span>
+              <span class="ppm-value" id="ppmDiff">-</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Analogs -->
+      <div class="card analogs-card">
+        <h2>Аналоги <span class="analogs-count" id="analogsCount">(0)</span></h2>
+        <div class="analogs-info">
+          <span class="search-radius" id="searchRadius">-</span>
+        </div>
+        <div class="analogs-table-wrapper">
+          <table class="analogs-table">
+            <thead>
+              <tr>
+                <th>Адреса</th>
+                <th>Ціна</th>
+                <th>$/м²</th>
+                <th>Площа</th>
+                <th>Кімн.</th>
+                <th>Поверх</th>
+                <th>Match</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="analogsTableBody">
+              <!-- Analogs will be inserted here -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Report Info -->
+      <div class="card report-card">
+        <div class="report-info">
+          <span>ID звіту: <code id="reportId">-</code></span>
+          <span>Згенеровано: <span id="generatedAt">-</span></span>
+          <span>Достовірність: <span id="confidence">-</span></span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
