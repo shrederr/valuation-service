@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { ApartmentComplex as ApartmentComplexEntity } from '@libs/database';
 
 interface ApartmentComplex {
   id: number;
@@ -32,7 +33,7 @@ export class ComplexMatcherService implements OnModuleInit {
   private searchPatterns: Map<number, RegExp[]> = new Map();
 
   constructor(
-    @InjectRepository('apartment_complexes')
+    @InjectRepository(ApartmentComplexEntity)
     private readonly complexRepository: Repository<any>,
   ) {}
 
@@ -85,7 +86,7 @@ export class ComplexMatcherService implements OnModuleInit {
 
     for (const name of names) {
       // Extract meaningful part (remove ЖК, etc.)
-      const cleaned = this.cleanName(name);
+      const cleaned = this.cleanName(name as string);
       if (cleaned.length < 3) continue;
 
       // Pattern 1: Exact match with ЖК/КГ prefix
