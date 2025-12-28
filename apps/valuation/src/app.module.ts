@@ -22,7 +22,7 @@ import { AppService } from './app.service';
     }),
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'public'),
-      exclude: ['/api/(.*)'],
+      exclude: ['/api/{*path}'],
     }),
     DatabaseModule,
     RabbitMQModule,
