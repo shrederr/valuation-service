@@ -160,7 +160,16 @@ export class InitialSyncService implements OnModuleInit {
     const lng = this.extractNumber(data.lng);
     const lat = this.extractNumber(data.lat);
 
-    if (lng && lat) {
+    // For initial sync, trust the geoId from aggregator to speed up the process
+    // We skip the expensive geo lookup and only use it when geoId is missing
+    if (data.geoId) {
+      resolvedGeoId = data.geoId;
+      // Use streetId from aggregator if available
+      if (data.streetId) {
+        resolvedStreetId = data.streetId;
+      }
+    } else if (lng && lat) {
+      // Only do geo lookup when geoId is missing
       const textForMatching = this.buildTextForMatching(data);
       try {
         const geoResolution = await this.geoLookupService.resolveGeoForListingWithText(
@@ -169,25 +178,18 @@ export class InitialSyncService implements OnModuleInit {
         if (geoResolution) {
           resolvedGeoId = geoResolution.geoId || undefined;
           resolvedStreetId = geoResolution.streetId || undefined;
-          
-          
         }
       } catch (error) {
         this.logger.warn(`Geo lookup failed for property ${data.id}: ${error instanceof Error ? error.message : 'Unknown'}`);
       }
     }
 
-    if (!resolvedGeoId && data.geoId) {
-      const g = await this.geoRepository.findOne({ where: { id: data.geoId }, select: ['id'] });
-      resolvedGeoId = g ? data.geoId : undefined;
-    }
+    // Trust aggregator data for topzone and complex IDs
     if (!resolvedTopzoneId && data.topzoneId) {
-      const t = await this.topzoneRepository.findOne({ where: { id: data.topzoneId }, select: ['id'] });
-      resolvedTopzoneId = t ? data.topzoneId : undefined;
+      resolvedTopzoneId = data.topzoneId;
     }
     if (!resolvedComplexId && data.complexId) {
-      const c = await this.complexRepository.findOne({ where: { id: data.complexId }, select: ['id'] });
-      resolvedComplexId = c ? data.complexId : undefined;
+      resolvedComplexId = data.complexId;
     }
 
     const attrResult = this.attributeMapperService.mapAttributes(
