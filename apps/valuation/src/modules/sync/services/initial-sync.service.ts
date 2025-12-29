@@ -89,6 +89,13 @@ export class InitialSyncService implements OnModuleInit {
     this.logger.log('Starting full initial sync...');
     await this.consumerControl.pauseConsumers();
     try {
+      // Clear existing data if FORCE_INITIAL_SYNC is enabled
+      if (this.forceInitialSync) {
+        const countBefore = await this.listingRepository.count();
+        this.logger.log(`Truncating unified_listings table (${countBefore} records)...`);
+        await this.listingRepository.query('TRUNCATE unified_listings CASCADE');
+        this.logger.log('Table truncated successfully');
+      }
       await this.syncAggregatorProperties();
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
       this.logger.log(`Initial sync completed in ${duration}s`);
