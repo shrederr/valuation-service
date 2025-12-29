@@ -1,9 +1,9 @@
-import { Injectable, Logger, OnModuleInit, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Geo, Street, Topzone, ApartmentComplex, UnifiedListing } from '@libs/database';
-import { GeoType, MultiLanguageDto, SourceType, DealType, RealtyType } from '@libs/common';
+import { GeoType, MultiLanguageDto, SourceType, DealType, RealtyType, AttributeMapperService } from '@libs/common';
 import {
   PaginatedResponseDto,
   VectorGeoDto,
@@ -14,6 +14,7 @@ import {
   AggregatorPropertyDto,
 } from '../dto/initial-sync.dto';
 import { ConsumerControlService } from './consumer-control.service';
+import { GeoLookupService } from '../../osm/geo-lookup.service';
 
 @Injectable()
 export class InitialSyncService implements OnModuleInit {
@@ -28,6 +29,8 @@ export class InitialSyncService implements OnModuleInit {
   constructor(
     private readonly configService: ConfigService,
     private readonly consumerControl: ConsumerControlService,
+    private readonly geoLookupService: GeoLookupService,
+    private readonly attributeMapperService: AttributeMapperService,
     @InjectRepository(Geo)
     private readonly geoRepository: Repository<Geo>,
     @InjectRepository(Street)
@@ -39,7 +42,6 @@ export class InitialSyncService implements OnModuleInit {
     @InjectRepository(UnifiedListing)
     private readonly listingRepository: Repository<UnifiedListing>,
   ) {
-    // Vector API is optional - geo data should be imported directly from local DB
     this.vectorApiUrl = this.configService.get<string>('VECTOR_API_URL') || '';
     this.aggregatorApiUrl = this.configService.get<string>('AGGREGATOR_API_URL') || '';
     this.syncOnStartup = this.configService.get<string>('SYNC_ON_STARTUP') === 'true';
@@ -47,383 +49,65 @@ export class InitialSyncService implements OnModuleInit {
     this.batchSize = this.configService.get<number>('SYNC_BATCH_SIZE') || 100;
   }
 
-  /**
-   * Called when module initializes.
-   * Checks if database is empty and runs initial sync if needed.
-   */
   async onModuleInit(): Promise<void> {
-    // Skip for local development
     if (this.skipInitialSync) {
       this.logger.log('Initial sync skipped (SKIP_INITIAL_SYNC=true)');
       return;
     }
-
     if (!this.syncOnStartup) {
       this.logger.log('Initial sync on startup is disabled');
       return;
     }
-
     const isEmpty = await this.isDatabaseEmpty();
     if (!isEmpty) {
       this.logger.log('Database is not empty, skipping initial sync');
       return;
     }
-
     this.logger.log('Database is empty, starting initial sync...');
     await this.runFullSync();
   }
 
-  /**
-   * Check if listings are empty (geo data is imported separately from local DB).
-   */
   async isDatabaseEmpty(): Promise<boolean> {
     const count = await this.listingRepository.count();
     return count === 0;
   }
 
-  /**
-   * Run full initial sync from external APIs.
-   * Pauses consumers during sync, then resumes them after.
-   */
   async runFullSync(): Promise<void> {
     if (this.isSyncing) {
       this.logger.warn('Sync already in progress, skipping');
       return;
     }
-
     this.isSyncing = true;
     const startTime = Date.now();
     this.logger.log('Starting full initial sync...');
-
-    // Pause consumers - messages will queue in RabbitMQ
     await this.consumerControl.pauseConsumers();
-
     try {
-      // NOTE: Geo data (geo, streets, topzones, apartment_complexes) must be imported
-      // separately from local DB using pg_dump/pg_restore before running this sync.
-      // This sync only imports properties from aggregator API.
-
-      // Sync properties from aggregator
       await this.syncAggregatorProperties();
-
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
       this.logger.log(`Initial sync completed in ${duration}s`);
     } catch (error) {
       this.logger.error('Initial sync failed', error instanceof Error ? error.stack : undefined);
       throw error;
     } finally {
-      // Always resume consumers, even on error
       await this.consumerControl.resumeConsumers();
       this.isSyncing = false;
     }
   }
 
-  // === Geo Sync ===
-
-  async syncGeo(): Promise<void> {
-    this.logger.log('Syncing geo data...');
-    let page = 1;
-    let totalSynced = 0;
-
-    while (true) {
-      const response = await this.fetchFromVector<VectorGeoDto>('geo/list', { page, perPage: this.batchSize });
-
-      if (!response.items || response.items.length === 0) {
-        break;
-      }
-
-      for (const item of response.items) {
-        await this.upsertGeo(item);
-        totalSynced++;
-      }
-
-      if (response.items.length < this.batchSize) {
-        break;
-      }
-
-      page++;
-    }
-
-    this.logger.log(`Geo sync completed: ${totalSynced} records`);
-  }
-
-  private async upsertGeo(data: VectorGeoDto): Promise<void> {
-    const existing = await this.geoRepository.findOne({ where: { id: data.id } });
-
-    const geoData = {
-      id: data.id,
-      name: data.name,
-      alias: data.alias,
-      type: data.type as GeoType,
-      lvl: data.lvl,
-      lft: data.lft ?? 0,
-      rgt: data.rgt ?? 0,
-      lat: this.extractNumber(data.lat),
-      lng: this.extractNumber(data.lng),
-      bounds: data.bounds,
-      declension: data.declension,
-      syncedAt: new Date(),
-    };
-
-    if (existing) {
-      await this.geoRepository.update(data.id, geoData);
-    } else {
-      await this.geoRepository.save(this.geoRepository.create(geoData));
-    }
-  }
-
-  // === Streets Sync ===
-
-  async syncStreets(): Promise<void> {
-    this.logger.log('Syncing streets...');
-    let page = 1;
-    let totalSynced = 0;
-
-    while (true) {
-      const response = await this.fetchFromVector<VectorStreetDto>('geo/street', { page, perPage: this.batchSize });
-
-      if (!response.items || response.items.length === 0) {
-        break;
-      }
-
-      for (const item of response.items) {
-        await this.upsertStreet(item);
-        totalSynced++;
-      }
-
-      if (response.items.length < this.batchSize) {
-        break;
-      }
-
-      page++;
-    }
-
-    this.logger.log(`Streets sync completed: ${totalSynced} records`);
-  }
-
-  private async upsertStreet(data: VectorStreetDto): Promise<void> {
-    const existing = await this.streetRepository.findOne({ where: { id: data.id } });
-
-    const streetData = {
-      id: data.id,
-      name: data.name,
-      alias: data.alias,
-      geoId: data.geoId,
-      bounds: data.bounds,
-      coordinates: data.coordinates,
-      syncedAt: new Date(),
-    };
-
-    if (existing) {
-      await this.streetRepository.update(data.id, streetData);
-    } else {
-      await this.streetRepository.save(this.streetRepository.create(streetData));
-    }
-  }
-
-  // === Topzones Sync ===
-
-  async syncTopzones(): Promise<void> {
-    this.logger.log('Syncing topzones...');
-    let page = 1;
-    let totalSynced = 0;
-
-    while (true) {
-      const response = await this.fetchFromVector<VectorTopzoneDto>('geo/topzone', { page, perPage: this.batchSize });
-
-      if (!response.items || response.items.length === 0) {
-        break;
-      }
-
-      for (const item of response.items) {
-        await this.upsertTopzone(item);
-        totalSynced++;
-      }
-
-      if (response.items.length < this.batchSize) {
-        break;
-      }
-
-      page++;
-    }
-
-    this.logger.log(`Topzones sync completed: ${totalSynced} records`);
-  }
-
-  private async upsertTopzone(data: VectorTopzoneDto): Promise<void> {
-    const existing = await this.topzoneRepository.findOne({ where: { id: data.id } });
-
-    const topzoneData = {
-      id: data.id,
-      name: data.name,
-      alias: data.alias,
-      lat: this.extractNumber(data.lat),
-      lng: this.extractNumber(data.lng),
-      bounds: data.bounds,
-      declension: data.declension,
-      coordinates: data.coordinates,
-      syncedAt: new Date(),
-    };
-
-    if (existing) {
-      await this.topzoneRepository.update(data.id, topzoneData);
-    } else {
-      await this.topzoneRepository.save(this.topzoneRepository.create(topzoneData));
-    }
-  }
-
-  // === Complexes Sync ===
-
-  async syncComplexes(): Promise<void> {
-    this.logger.log('Syncing apartment complexes...');
-    let page = 1;
-    let totalSynced = 0;
-
-    while (true) {
-      const response = await this.fetchFromVector<VectorComplexDto>('apartment-complexes/list', { page, perPage: this.batchSize });
-
-      if (!response.items || response.items.length === 0) {
-        break;
-      }
-
-      for (const item of response.items) {
-        await this.upsertComplex(item);
-        totalSynced++;
-      }
-
-      if (response.items.length < this.batchSize) {
-        break;
-      }
-
-      page++;
-    }
-
-    this.logger.log(`Complexes sync completed: ${totalSynced} records`);
-  }
-
-  private async upsertComplex(data: VectorComplexDto): Promise<void> {
-    const existing = await this.complexRepository.findOne({ where: { id: data.id } });
-
-    const name: MultiLanguageDto = typeof data.name === 'string' ? { uk: data.name } : data.name;
-
-    const complexData = {
-      id: data.id,
-      name,
-      geoId: data.geoId,
-      topzoneId: data.topzoneId,
-      lat: this.extractNumber(data.lat),
-      lng: this.extractNumber(data.lng),
-      type: data.type,
-      syncedAt: new Date(),
-    };
-
-    if (existing) {
-      await this.complexRepository.update(data.id, complexData);
-    } else {
-      await this.complexRepository.save(this.complexRepository.create(complexData));
-    }
-  }
-
-  // === Vector Properties Sync ===
-
-  async syncVectorProperties(): Promise<void> {
-    this.logger.log('Syncing vector properties...');
-    let page = 1;
-    let totalSynced = 0;
-
-    while (true) {
-      const response = await this.fetchFromVector<VectorPropertyDto>('properties/list', { page, perPage: this.batchSize });
-
-      if (!response.items || response.items.length === 0) {
-        break;
-      }
-
-      for (const item of response.items) {
-        await this.upsertVectorProperty(item);
-        totalSynced++;
-      }
-
-      if (response.items.length < this.batchSize) {
-        break;
-      }
-
-      page++;
-    }
-
-    this.logger.log(`Vector properties sync completed: ${totalSynced} records`);
-  }
-
-  private async upsertVectorProperty(data: VectorPropertyDto): Promise<void> {
-    const existing = await this.listingRepository.findOne({
-      where: { sourceType: SourceType.VECTOR, sourceId: data.id },
-    });
-
-    const listingData = {
-      sourceType: SourceType.VECTOR,
-      sourceId: data.id,
-      sourceGlobalId: data.globalId,
-      dealType: this.mapDealType(data.dealType),
-      realtyType: this.mapRealtyType(data.realtyType),
-      realtySubtype: data.realtySubtype,
-      geoId: data.geoId,
-      streetId: data.streetId,
-      topzoneId: data.topzoneId,
-      complexId: data.complexId,
-      houseNumber: data.houseNumber,
-      apartmentNumber: data.apartmentNumber ? parseInt(data.apartmentNumber, 10) : undefined,
-      corps: data.corps,
-      lat: this.extractNumber(data.lat),
-      lng: this.extractNumber(data.lng),
-      price: this.extractNumber(data.attributes?.price),
-      currency: (data.attributes?.currency as string) || 'USD',
-      pricePerMeter: this.extractNumber(data.attributes?.price_sqr ?? data.attributes?.pricePerMeter),
-      totalArea: this.extractNumber(data.attributes?.square_total ?? data.attributes?.totalArea),
-      livingArea: this.extractNumber(data.attributes?.square_living ?? data.attributes?.livingArea),
-      kitchenArea: this.extractNumber(data.attributes?.square_kitchen ?? data.attributes?.kitchenArea),
-      rooms: this.extractInteger(data.attributes?.rooms_count ?? data.attributes?.rooms),
-      floor: this.extractInteger(data.attributes?.floor),
-      totalFloors: this.extractInteger(data.attributes?.floors_count ?? data.attributes?.totalFloors),
-      condition: data.attributes?.condition as string,
-      houseType: data.attributes?.houseType as string,
-      attributes: data.attributes,
-      isActive: !data.isArchived,
-      syncedAt: new Date(),
-    };
-
-    if (existing) {
-      const merged = this.listingRepository.merge(existing, listingData);
-      await this.listingRepository.save(merged);
-    } else {
-      await this.listingRepository.save(this.listingRepository.create(listingData));
-    }
-  }
-
-  // === Aggregator Properties Sync ===
-
   async syncAggregatorProperties(): Promise<void> {
-    this.logger.log('Syncing aggregator properties...');
+    this.logger.log('Syncing aggregator properties with GeoLookupService...');
     let page = 1;
     let totalSynced = 0;
-
     while (true) {
       const response = await this.fetchFromAggregator<AggregatorPropertyDto>('properties/list', { page, perPage: this.batchSize });
-
-      if (!response.items || response.items.length === 0) {
-        break;
-      }
-
+      if (!response.items || response.items.length === 0) break;
       for (const item of response.items) {
         await this.upsertAggregatorProperty(item);
         totalSynced++;
       }
-
-      if (response.items.length < this.batchSize) {
-        break;
-      }
-
+      if (response.items.length < this.batchSize) break;
       page++;
     }
-
     this.logger.log(`Aggregator properties sync completed: ${totalSynced} records`);
   }
 
@@ -432,42 +116,64 @@ export class InitialSyncService implements OnModuleInit {
       where: { sourceType: SourceType.AGGREGATOR, sourceId: data.id },
     });
 
-    // Validate geo references - aggregator may use different IDs
-    // Set to null if reference doesn't exist in our database
-    let validGeoId: number | undefined = undefined;
-    let validStreetId: number | undefined = undefined;
-    let validTopzoneId: number | undefined = undefined;
-    let validComplexId: number | undefined = undefined;
+    const platform = this.attributeMapperService.detectPlatform(data.realtyPlatform, data.url);
 
-    if (data.geoId) {
-      const geoExists = await this.geoRepository.findOne({ where: { id: data.geoId }, select: ['id'] });
-      validGeoId = geoExists ? data.geoId : undefined;
+    let resolvedGeoId: number | undefined;
+    let resolvedStreetId: number | undefined;
+    let resolvedComplexId: number | undefined;
+    let resolvedTopzoneId: number | undefined;
+
+    const lng = this.extractNumber(data.lng);
+    const lat = this.extractNumber(data.lat);
+
+    if (lng && lat) {
+      const textForMatching = this.buildTextForMatching(data);
+      try {
+        const geoResolution = await this.geoLookupService.resolveGeoForListingWithText(
+          lng, lat, textForMatching, data.geoId,
+        );
+        if (geoResolution) {
+          resolvedGeoId = geoResolution.geoId || undefined;
+          resolvedStreetId = geoResolution.streetId || undefined;
+          
+          
+        }
+      } catch (error) {
+        this.logger.warn(`Geo lookup failed for property ${data.id}: ${error instanceof Error ? error.message : 'Unknown'}`);
+      }
     }
-    if (data.streetId) {
-      const streetExists = await this.streetRepository.findOne({ where: { id: data.streetId }, select: ['id'] });
-      validStreetId = streetExists ? data.streetId : undefined;
+
+    if (!resolvedGeoId && data.geoId) {
+      const g = await this.geoRepository.findOne({ where: { id: data.geoId }, select: ['id'] });
+      resolvedGeoId = g ? data.geoId : undefined;
     }
-    if (data.topzoneId) {
-      const topzoneExists = await this.topzoneRepository.findOne({ where: { id: data.topzoneId }, select: ['id'] });
-      validTopzoneId = topzoneExists ? data.topzoneId : undefined;
+    if (!resolvedTopzoneId && data.topzoneId) {
+      const t = await this.topzoneRepository.findOne({ where: { id: data.topzoneId }, select: ['id'] });
+      resolvedTopzoneId = t ? data.topzoneId : undefined;
     }
-    if (data.complexId) {
-      const complexExists = await this.complexRepository.findOne({ where: { id: data.complexId }, select: ['id'] });
-      validComplexId = complexExists ? data.complexId : undefined;
+    if (!resolvedComplexId && data.complexId) {
+      const c = await this.complexRepository.findOne({ where: { id: data.complexId }, select: ['id'] });
+      resolvedComplexId = c ? data.complexId : undefined;
     }
+
+    const attrResult = this.attributeMapperService.mapAttributes(
+      platform,
+      data.attributes as Record<string, unknown> | undefined,
+      data.primaryData as Record<string, unknown> | undefined,
+    );
 
     const listingData = {
       sourceType: SourceType.AGGREGATOR,
       sourceId: data.id,
       dealType: this.mapDealType(data.dealType),
       realtyType: this.mapRealtyType(data.realtyType),
-      geoId: validGeoId,
-      streetId: validStreetId,
-      topzoneId: validTopzoneId,
-      complexId: validComplexId,
+      geoId: resolvedGeoId,
+      streetId: resolvedStreetId,
+      topzoneId: resolvedTopzoneId,
+      complexId: resolvedComplexId,
       houseNumber: data.houseNumber,
-      lat: this.extractNumber(data.lat),
-      lng: this.extractNumber(data.lng),
+      lat,
+      lng,
       price: data.price,
       currency: data.currency || 'USD',
       pricePerMeter: this.extractNumber(data.attributes?.price_sqr ?? data.attributes?.pricePerMeter),
@@ -477,9 +183,11 @@ export class InitialSyncService implements OnModuleInit {
       rooms: this.extractInteger(data.attributes?.rooms_count ?? data.attributes?.rooms),
       floor: this.extractInteger(data.attributes?.floor),
       totalFloors: this.extractInteger(data.attributes?.floors_count ?? data.attributes?.totalFloors),
-      condition: data.attributes?.condition as string,
-      houseType: data.attributes?.houseType as string,
+      condition: attrResult.condition,
+      houseType: attrResult.houseType,
       attributes: data.attributes,
+      primaryData: data.primaryData as Record<string, unknown>,
+      realtyPlatform: platform,
       description: data.description as unknown as MultiLanguageDto,
       externalUrl: data.url,
       isActive: data.isActive,
@@ -494,51 +202,33 @@ export class InitialSyncService implements OnModuleInit {
     }
   }
 
-  // === Helper Methods ===
-
-  private async fetchFromVector<T>(endpoint: string, params: Record<string, unknown>): Promise<PaginatedResponseDto<T>> {
-    const url = new URL(endpoint, this.vectorApiUrl);
-    Object.entries(params).forEach(([key, value]) => {
-      url.searchParams.set(key, String(value));
-    });
-
-    try {
-      const response = await fetch(url.toString(), {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.configService.get<string>('VECTOR_API_TOKEN')}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Vector API request failed: ${response.status} ${response.statusText}`);
+  private buildTextForMatching(data: AggregatorPropertyDto): string {
+    const parts: string[] = [];
+    if (data.description) {
+      if (typeof data.description === 'string') {
+        parts.push(data.description);
+      } else if (typeof data.description === 'object') {
+        const desc = data.description as { uk?: string; ru?: string };
+        if (desc.uk) parts.push(desc.uk);
+        if (desc.ru) parts.push(desc.ru);
       }
-
-      const data = await response.json();
-
-      // Handle different response formats
-      if (Array.isArray(data)) {
-        return { items: data, total: data.length, page: 1, pageSize: data.length };
-      }
-
-      return {
-        items: data.items || data.data || [],
-        total: data.total || data.count || 0,
-        page: data.page || 1,
-        pageSize: data.pageSize || data.limit || this.batchSize,
-      };
-    } catch (error) {
-      this.logger.error(`Failed to fetch from Vector API: ${endpoint}`, error instanceof Error ? error.message : undefined);
-      return { items: [], total: 0, page: 1, pageSize: this.batchSize };
     }
+    const primaryData = data.primaryData as Record<string, unknown> | undefined;
+    if (primaryData?.address && typeof primaryData.address === 'string') {
+      parts.push(primaryData.address);
+    }
+    if (primaryData?.street_name && typeof primaryData.street_name === 'string') {
+      parts.push(primaryData.street_name);
+    }
+    if (data.houseNumber) {
+      parts.push(data.houseNumber);
+    }
+    return parts.join(' ');
   }
 
   private async fetchFromAggregator<T>(endpoint: string, params: Record<string, unknown>): Promise<PaginatedResponseDto<T>> {
     const url = new URL(endpoint, this.aggregatorApiUrl);
-    Object.entries(params).forEach(([key, value]) => {
-      url.searchParams.set(key, String(value));
-    });
-
+    Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, String(value)));
     try {
       const response = await fetch(url.toString(), {
         headers: {
@@ -546,18 +236,13 @@ export class InitialSyncService implements OnModuleInit {
           Authorization: `Bearer ${this.configService.get<string>('AGGREGATOR_API_TOKEN')}`,
         },
       });
-
       if (!response.ok) {
         throw new Error(`Aggregator API request failed: ${response.status} ${response.statusText}`);
       }
-
       const data = await response.json();
-
-      // Handle different response formats
       if (Array.isArray(data)) {
         return { items: data, total: data.length, page: 1, pageSize: data.length };
       }
-
       return {
         items: data.items || data.data || [],
         total: data.total || data.count || 0,

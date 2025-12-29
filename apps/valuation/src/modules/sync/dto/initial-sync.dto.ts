@@ -56,6 +56,7 @@ export class VectorPropertyDto {
   public globalId: string;
   public dealType: string;
   public realtyType: string;
+  public realtyPlatform?: string;
   public realtySubtype?: string;
   public geoId: number;
   public streetId: number;
@@ -68,6 +69,7 @@ export class VectorPropertyDto {
   public lat?: number;
   public lng?: number;
   public attributes?: Record<string, unknown>;
+  public primaryData?: Record<string, unknown>;
   public isArchived?: boolean;
   public createdAt: string;
   public updatedAt: string;
@@ -78,6 +80,7 @@ export class AggregatorPropertyDto {
   public externalId: string;
   public dealType: string;
   public realtyType: string;
+  public realtyPlatform?: string;
   public geoId: number;
   public streetId: number;
   public topzoneId: number;
@@ -88,6 +91,7 @@ export class AggregatorPropertyDto {
   public price: number;
   public currency: string;
   public attributes?: Record<string, unknown>;
+  public primaryData?: Record<string, unknown>;
   public description?: Record<string, string>;
   public url?: string;
   public isActive: boolean;
