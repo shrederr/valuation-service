@@ -117,17 +117,32 @@ export class InitialSyncService implements OnModuleInit {
     this.logger.log('Syncing aggregator properties with GeoLookupService...');
     let page = 1;
     let totalSynced = 0;
+    let totalErrors = 0;
     while (true) {
       const response = await this.fetchFromAggregator<AggregatorPropertyDto>('properties/list', { page, perPage: this.batchSize, isActive: true });
-      if (!response.items || response.items.length === 0) break;
+      this.logger.log(`Page ${page}: fetched ${response.items?.length || 0} items, total in response: ${response.total}`);
+      if (!response.items || response.items.length === 0) {
+        this.logger.log(`No items on page ${page}, stopping sync`);
+        break;
+      }
       for (const item of response.items) {
-        await this.upsertAggregatorProperty(item);
-        totalSynced++;
+        try {
+          await this.upsertAggregatorProperty(item);
+          totalSynced++;
+          if (totalSynced % 500 === 0) {
+            this.logger.log(`Progress: ${totalSynced} records synced...`);
+          }
+        } catch (error) {
+          totalErrors++;
+          if (totalErrors <= 5) {
+            this.logger.error(`Error syncing property ${item.id}: ${error instanceof Error ? error.message : 'Unknown'}`);
+          }
+        }
       }
       if (response.items.length < this.batchSize) break;
       page++;
     }
-    this.logger.log(`Aggregator properties sync completed: ${totalSynced} records`);
+    this.logger.log(`Aggregator properties sync completed: ${totalSynced} records synced, ${totalErrors} errors`);
   }
 
   private async upsertAggregatorProperty(data: AggregatorPropertyDto): Promise<void> {
@@ -298,6 +313,41 @@ export class InitialSyncService implements OnModuleInit {
     if (typeof value === 'string') {
       const num = parseFloat(value);
       return isNaN(num) ? undefined : num;
+    }
+    // Handle Prisma Decimal objects: {"s":1,"e":1,"d":[25,9300000]}
+    if (typeof value === 'object' && value !== null) {
+      const decimal = value as { s?: number; e?: number; d?: number[]; toNumber?: () => number };
+      // If it has a toNumber method, use it
+      if (typeof decimal.toNumber === 'function') {
+        return decimal.toNumber();
+      }
+      // Parse Prisma Decimal JSON format (decimal.js)
+      // s: sign (1 or -1), e: exponent, d: array of 7-digit groups
+      if (typeof decimal.s === 'number' && typeof decimal.e === 'number' && Array.isArray(decimal.d)) {
+        try {
+          const sign = decimal.s;
+          const exponent = decimal.e;
+          const digits = decimal.d;
+
+          if (digits.length === 0) return 0;
+
+          // Build coefficient string from digit groups
+          let coeffStr = digits[0].toString();
+          for (let i = 1; i < digits.length; i++) {
+            coeffStr += digits[i].toString().padStart(7, '0');
+          }
+
+          // Convert to scientific notation: first digit, decimal, rest of digits
+          const mantissaStr = coeffStr[0] + '.' + (coeffStr.slice(1) || '0');
+          const mantissa = parseFloat(mantissaStr);
+
+          // Apply sign and exponent
+          const result = sign * mantissa * Math.pow(10, exponent);
+          return isNaN(result) ? undefined : result;
+        } catch {
+          return undefined;
+        }
+      }
     }
     return undefined;
   }
