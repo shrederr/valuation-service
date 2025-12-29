@@ -15,6 +15,7 @@ interface Complex {
   geoId?: number;
   streetId?: number;
   source: 'geovector' | 'osm' | 'merged';
+  region?: string;
 }
 
 interface OsmElement {
@@ -26,6 +27,50 @@ interface OsmElement {
   tags?: Record<string, string>;
   geometry?: { lat: number; lon: number }[];
 }
+
+// All supported regions with bounding boxes
+const REGIONS: Record<string, { bbox: string; latRange: [number, number]; lngRange: [number, number] }> = {
+  odesa: {
+    bbox: '46.3,30.4,46.8,31.1',
+    latRange: [46.3, 46.8],
+    lngRange: [30.4, 31.1],
+  },
+  kyiv: {
+    bbox: '50.2,30.2,50.65,31.0',
+    latRange: [50.2, 50.65],
+    lngRange: [30.2, 31.0],
+  },
+  kharkiv: {
+    bbox: '49.85,36.05,50.15,36.45',
+    latRange: [49.85, 50.15],
+    lngRange: [36.05, 36.45],
+  },
+  dnipro: {
+    bbox: '48.35,34.85,48.55,35.2',
+    latRange: [48.35, 48.55],
+    lngRange: [34.85, 35.2],
+  },
+  lviv: {
+    bbox: '49.75,23.85,49.95,24.15',
+    latRange: [49.75, 49.95],
+    lngRange: [23.85, 24.15],
+  },
+  zaporizhzhia: {
+    bbox: '47.75,35.0,47.95,35.25',
+    latRange: [47.75, 47.95],
+    lngRange: [35.0, 35.25],
+  },
+  kryvyi_rih: {
+    bbox: '47.85,33.25,48.05,33.55',
+    latRange: [47.85, 48.05],
+    lngRange: [33.25, 33.55],
+  },
+  mykolaiv: {
+    bbox: '46.9,31.9,47.05,32.1',
+    latRange: [46.9, 47.05],
+    lngRange: [31.9, 32.1],
+  },
+};
 
 // Parse GeoVector.csv
 function parseGeoVectorCSV(filePath: string): Complex[] {
@@ -51,6 +96,17 @@ function parseGeoVectorCSV(filePath: string): Complex[] {
       source: 'geovector' as const,
     };
   }).filter(c => c.lat && c.lng && !isNaN(c.lat) && !isNaN(c.lng));
+}
+
+// Filter complexes by region bounding box
+function filterByRegion(complexes: Complex[], region: string): Complex[] {
+  const config = REGIONS[region];
+  if (!config) return [];
+
+  return complexes.filter(c =>
+    c.lat >= config.latRange[0] && c.lat <= config.latRange[1] &&
+    c.lng >= config.lngRange[0] && c.lng <= config.lngRange[1]
+  ).map(c => ({ ...c, region }));
 }
 
 // Query Overpass API for residential complexes with geometry
@@ -79,7 +135,7 @@ out body geom;
       },
     };
 
-    console.log('Querying Overpass API...');
+    console.log('  Querying Overpass API...');
 
     const req = https.request(options, (res) => {
       let data = '';
@@ -87,9 +143,9 @@ out body geom;
       res.on('end', () => {
         try {
           const json = JSON.parse(data);
-          console.log(`Found ${json.elements?.length || 0} elements in OSM`);
+          console.log(`  Found ${json.elements?.length || 0} elements in OSM`);
           resolve(json.elements || []);
-        } catch (e) {
+        } catch (e: any) {
           reject(new Error('Failed to parse OSM response: ' + e.message));
         }
       });
@@ -147,7 +203,7 @@ function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: numbe
 }
 
 // Match GeoVector complexes with OSM data
-function matchComplexes(geoVector: Complex[], osmElements: OsmElement[]): Complex[] {
+function matchComplexes(geoVector: Complex[], osmElements: OsmElement[], region: string): Complex[] {
   const result: Complex[] = [];
   const matchedOsmIds = new Set<number>();
 
@@ -182,11 +238,12 @@ function matchComplexes(geoVector: Complex[], osmElements: OsmElement[]): Comple
         lng,
         polygon,
         source: 'osm' as const,
-      };
+        region,
+      } as Complex;
     })
     .filter((c): c is Complex => c !== null);
 
-  console.log(`Processed ${osmComplexes.length} OSM complexes with names`);
+  console.log(`  Processed ${osmComplexes.length} OSM complexes with names`);
 
   // Match GeoVector with OSM
   for (const gv of geoVector) {
@@ -231,11 +288,12 @@ function matchComplexes(geoVector: Complex[], osmElements: OsmElement[]): Comple
         lng: bestMatch.lng,
         polygon: bestMatch.polygon,
         source: 'merged',
+        region,
       });
-      console.log(`  Matched: "${gv.nameRu}" → OSM "${bestMatch.nameRu}" (score: ${bestScore.toFixed(2)})`);
+      console.log(`    Matched: "${gv.nameRu}" → OSM "${bestMatch.nameRu}" (score: ${bestScore.toFixed(2)})`);
     } else {
       // No match - use GeoVector data without polygon
-      result.push(gv);
+      result.push({ ...gv, region });
     }
   }
 
@@ -252,13 +310,41 @@ function matchComplexes(geoVector: Complex[], osmElements: OsmElement[]): Comple
   return result;
 }
 
-// Generate SQL for database import
-function generateSQL(complexes: Complex[]): string {
+// Generate SQL for database import (append mode - no DROP/CREATE)
+function generateInsertSQL(complexes: Complex[]): string {
   const lines: string[] = [];
 
-  lines.push(`-- Apartment complexes import
+  for (const c of complexes) {
+    const nameNormalized = normalizeName(c.nameRu || c.nameUk);
+    const polygonWKT = c.polygon && c.polygon.length >= 3
+      ? `ST_GeomFromText('POLYGON((${c.polygon.map(p => `${p[0]} ${p[1]}`).join(', ')}, ${c.polygon[0][0]} ${c.polygon[0][1]}))', 4326)`
+      : 'NULL';
+
+    const escapeSql = (s: string | undefined) => s ? `'${s.replace(/'/g, "''")}'` : 'NULL';
+
+    lines.push(`INSERT INTO apartment_complexes (osm_id, osm_type, name_ru, name_uk, name_en, name_normalized, lat, lng, polygon, source) VALUES (
+  ${c.osmId || 'NULL'},
+  ${c.osmType ? `'${c.osmType}'` : 'NULL'},
+  ${escapeSql(c.nameRu)},
+  ${escapeSql(c.nameUk)},
+  ${escapeSql(c.nameEn)},
+  ${escapeSql(nameNormalized)},
+  ${c.lat},
+  ${c.lng},
+  ${polygonWKT},
+  '${c.source}'
+);`);
+  }
+
+  return lines.join('\n');
+}
+
+// Generate full SQL with table creation
+function generateFullSQL(complexes: Complex[]): string {
+  const header = `-- Apartment complexes import
 -- Generated: ${new Date().toISOString()}
 -- Total: ${complexes.length} complexes
+-- Regions: ${Object.keys(REGIONS).join(', ')}
 
 DROP TABLE IF EXISTS apartment_complexes CASCADE;
 
@@ -288,31 +374,12 @@ CREATE INDEX idx_apartment_complexes_coords ON apartment_complexes(lat, lng);
 CREATE INDEX idx_apartment_complexes_geo ON apartment_complexes(geo_id);
 CREATE INDEX idx_apartment_complexes_polygon ON apartment_complexes USING GIST(polygon);
 
-`);
+`;
 
-  for (const c of complexes) {
-    const nameNormalized = normalizeName(c.nameRu || c.nameUk);
-    const polygonWKT = c.polygon && c.polygon.length >= 3
-      ? `ST_GeomFromText('POLYGON((${c.polygon.map(p => `${p[0]} ${p[1]}`).join(', ')}, ${c.polygon[0][0]} ${c.polygon[0][1]}))', 4326)`
-      : 'NULL';
+  const inserts = generateInsertSQL(complexes);
 
-    const escapeSql = (s: string | undefined) => s ? `'${s.replace(/'/g, "''")}'` : 'NULL';
+  const footer = `
 
-    lines.push(`INSERT INTO apartment_complexes (osm_id, osm_type, name_ru, name_uk, name_en, name_normalized, lat, lng, polygon, source) VALUES (
-  ${c.osmId || 'NULL'},
-  ${c.osmType ? `'${c.osmType}'` : 'NULL'},
-  ${escapeSql(c.nameRu)},
-  ${escapeSql(c.nameUk)},
-  ${escapeSql(c.nameEn)},
-  ${escapeSql(nameNormalized)},
-  ${c.lat},
-  ${c.lng},
-  ${polygonWKT},
-  '${c.source}'
-);`);
-  }
-
-  lines.push(`
 -- Update geo_id based on coordinates
 UPDATE apartment_complexes ac
 SET geo_id = g.id
@@ -329,36 +396,30 @@ SELECT
   COUNT(*)
 FROM apartment_complexes
 GROUP BY source;
-`);
+`;
 
-  return lines.join('\n');
+  return header + inserts + footer;
 }
 
-// Main function
-async function main() {
-  const geoVectorPath = path.resolve(__dirname, '../../GeoVector.csv');
-  const outputPath = path.resolve(__dirname, '../db/apartment_complexes.sql');
+// Process a single region
+async function processRegion(geoVector: Complex[], region: string): Promise<Complex[]> {
+  console.log(`\n=== Processing region: ${region.toUpperCase()} ===`);
 
-  console.log('=== Apartment Complexes Import ===\n');
+  const config = REGIONS[region];
+  if (!config) {
+    console.log(`  Unknown region: ${region}`);
+    return [];
+  }
 
-  // 1. Parse GeoVector.csv
-  console.log('1. Parsing GeoVector.csv...');
-  const geoVector = parseGeoVectorCSV(geoVectorPath);
-  console.log(`   Found ${geoVector.length} complexes\n`);
+  // Filter GeoVector by region
+  const regionGV = filterByRegion(geoVector, region);
+  console.log(`  GeoVector complexes: ${regionGV.length}`);
 
-  // Filter to Odessa region for now
-  const odessaGV = geoVector.filter(c =>
-    c.lat >= 46.3 && c.lat <= 46.8 && c.lng >= 30.4 && c.lng <= 31.1
-  );
-  console.log(`   Odessa region: ${odessaGV.length} complexes\n`);
+  // Query OSM
+  const osmElements = await queryOverpassAPI(config.bbox);
 
-  // 2. Query Overpass API
-  console.log('2. Querying Overpass API for OSM data...');
-  const osmElements = await queryOverpassAPI('46.3,30.4,46.8,31.1');
-
-  // 3. Match and merge
-  console.log('\n3. Matching GeoVector with OSM...');
-  const merged = matchComplexes(odessaGV, osmElements);
+  // Match and merge
+  const merged = matchComplexes(regionGV, osmElements, region);
 
   const stats = {
     total: merged.length,
@@ -368,22 +429,103 @@ async function main() {
     merged: merged.filter(c => c.source === 'merged').length,
   };
 
-  console.log('\n4. Statistics:');
-  console.log(`   Total complexes: ${stats.total}`);
-  console.log(`   With polygon: ${stats.withPolygon}`);
-  console.log(`   From GeoVector only: ${stats.fromGeoVector}`);
-  console.log(`   From OSM only: ${stats.fromOSM}`);
-  console.log(`   Merged (matched): ${stats.merged}`);
+  console.log(`  Results for ${region}:`);
+  console.log(`    Total: ${stats.total}`);
+  console.log(`    With polygon: ${stats.withPolygon}`);
+  console.log(`    GeoVector only: ${stats.fromGeoVector}`);
+  console.log(`    OSM only: ${stats.fromOSM}`);
+  console.log(`    Merged: ${stats.merged}`);
 
-  // 4. Generate SQL
-  console.log('\n5. Generating SQL...');
-  const sql = generateSQL(merged);
+  return merged;
+}
+
+// Sleep helper for rate limiting
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Main function
+async function main() {
+  const args = process.argv.slice(2);
+  const selectedRegion = args[0]?.toLowerCase();
+
+  const geoVectorPath = path.resolve(__dirname, '../../GeoVector.csv');
+  const outputPath = path.resolve(__dirname, '../db/apartment_complexes.sql');
+
+  console.log('=== Apartment Complexes Import ===');
+  console.log(`Available regions: ${Object.keys(REGIONS).join(', ')}`);
+
+  // 1. Parse GeoVector.csv
+  console.log('\n1. Parsing GeoVector.csv...');
+  let geoVector: Complex[] = [];
+  if (fs.existsSync(geoVectorPath)) {
+    geoVector = parseGeoVectorCSV(geoVectorPath);
+    console.log(`   Found ${geoVector.length} complexes in GeoVector`);
+  } else {
+    console.log(`   GeoVector.csv not found at ${geoVectorPath}`);
+    console.log('   Will use OSM data only');
+  }
+
+  // 2. Process regions
+  const allComplexes: Complex[] = [];
+
+  if (selectedRegion && selectedRegion !== 'all') {
+    // Process single region
+    if (!REGIONS[selectedRegion]) {
+      console.error(`Unknown region: ${selectedRegion}`);
+      console.error(`Available: ${Object.keys(REGIONS).join(', ')}`);
+      process.exit(1);
+    }
+    const result = await processRegion(geoVector, selectedRegion);
+    allComplexes.push(...result);
+  } else {
+    // Process all regions
+    console.log('\n2. Processing all regions...');
+    for (const region of Object.keys(REGIONS)) {
+      const result = await processRegion(geoVector, region);
+      allComplexes.push(...result);
+
+      // Rate limit for Overpass API
+      if (region !== Object.keys(REGIONS).slice(-1)[0]) {
+        console.log('  Waiting 5 seconds before next region...');
+        await sleep(5000);
+      }
+    }
+  }
+
+  // Deduplicate by osmId if present
+  const seenOsmIds = new Set<number>();
+  const dedupedComplexes = allComplexes.filter(c => {
+    if (c.osmId) {
+      if (seenOsmIds.has(c.osmId)) return false;
+      seenOsmIds.add(c.osmId);
+    }
+    return true;
+  });
+
+  // Assign sequential IDs
+  dedupedComplexes.forEach((c, idx) => {
+    c.id = idx + 1;
+  });
+
+  // 3. Generate output
+  console.log('\n3. Final statistics:');
+  console.log(`   Total unique complexes: ${dedupedComplexes.length}`);
+  console.log(`   With polygon: ${dedupedComplexes.filter(c => c.polygon).length}`);
+  console.log(`   By source:`);
+  console.log(`     - geovector: ${dedupedComplexes.filter(c => c.source === 'geovector').length}`);
+  console.log(`     - osm: ${dedupedComplexes.filter(c => c.source === 'osm').length}`);
+  console.log(`     - merged: ${dedupedComplexes.filter(c => c.source === 'merged').length}`);
+
+  // Generate SQL
+  console.log('\n4. Generating SQL...');
+  const sql = generateFullSQL(dedupedComplexes);
   fs.writeFileSync(outputPath, sql);
   console.log(`   Saved to: ${outputPath}`);
 
   // Also save JSON for reference
   const jsonPath = path.resolve(__dirname, '../db/apartment_complexes.json');
-  fs.writeFileSync(jsonPath, JSON.stringify(merged, null, 2));
+  fs.writeFileSync(jsonPath, JSON.stringify(dedupedComplexes, null, 2));
   console.log(`   JSON saved to: ${jsonPath}`);
 
   console.log('\n=== Done ===');

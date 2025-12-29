@@ -132,6 +132,12 @@ export class UnifiedListing {
   @Column({ type: 'jsonb', nullable: true })
   public attributes?: Record<string, unknown>;
 
+  @Column({ name: 'primary_data', type: 'jsonb', nullable: true })
+  public primaryData?: Record<string, unknown>;
+
+  @Column({ name: 'realty_platform', type: 'text', nullable: true })
+  public realtyPlatform?: string;
+
   @Column({ type: 'jsonb', nullable: true })
   public description?: MultiLanguageDto;
 
