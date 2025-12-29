@@ -60,6 +60,11 @@ export class InitialSyncService implements OnModuleInit {
       this.logger.log('Initial sync on startup is disabled');
       return;
     }
+    // Run sync in background to not block server startup
+    setImmediate(() => this.startSyncIfNeeded());
+  }
+
+  private async startSyncIfNeeded(): Promise<void> {
     if (this.forceInitialSync) {
       this.logger.log('FORCE_INITIAL_SYNC=true, running sync regardless of database state...');
       await this.runFullSync();
