@@ -23,6 +23,7 @@ export class InitialSyncService implements OnModuleInit {
   private readonly aggregatorApiUrl: string;
   private readonly syncOnStartup: boolean;
   private readonly skipInitialSync: boolean;
+  private readonly forceInitialSync: boolean;
   private readonly batchSize: number;
   private isSyncing = false;
 
@@ -46,6 +47,7 @@ export class InitialSyncService implements OnModuleInit {
     this.aggregatorApiUrl = this.configService.get<string>('AGGREGATOR_API_URL') || '';
     this.syncOnStartup = this.configService.get<string>('SYNC_ON_STARTUP') === 'true';
     this.skipInitialSync = this.configService.get<string>('SKIP_INITIAL_SYNC') === 'true';
+    this.forceInitialSync = this.configService.get<string>('FORCE_INITIAL_SYNC') === 'true';
     this.batchSize = this.configService.get<number>('SYNC_BATCH_SIZE') || 100;
   }
 
@@ -56,6 +58,11 @@ export class InitialSyncService implements OnModuleInit {
     }
     if (!this.syncOnStartup) {
       this.logger.log('Initial sync on startup is disabled');
+      return;
+    }
+    if (this.forceInitialSync) {
+      this.logger.log('FORCE_INITIAL_SYNC=true, running sync regardless of database state...');
+      await this.runFullSync();
       return;
     }
     const isEmpty = await this.isDatabaseEmpty();
