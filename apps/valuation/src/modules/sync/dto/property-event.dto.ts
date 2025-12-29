@@ -17,6 +17,7 @@ export class VectorPropertyEventDto {
   public lat: number;
   public lng: number;
   public attributes: Record<string, unknown>;
+  public primaryData?: Record<string, unknown>;
   public createdAt: Date;
   public updatedAt: Date;
 }
@@ -49,6 +50,7 @@ export class AggregatorPropertyEventDto {
   public price: number;
   public currency: string;
   public attributes: Record<string, unknown>;
+  public primaryData?: Record<string, unknown>;
   public seller: Record<string, unknown>;
   public description: Record<string, string>;
   public images: string[];

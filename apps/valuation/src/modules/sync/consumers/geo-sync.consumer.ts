@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { RabbitSubscribe, Nack } from '@golevelup/nestjs-rabbitmq';
 import { VALUATION_EXCHANGE, QUEUES, ROUTING_KEYS } from '@libs/rabbitmq';
 import { GeoSyncService } from '../services/geo-sync.service';
@@ -16,8 +17,26 @@ import {
 @Injectable()
 export class GeoSyncConsumer {
   private readonly logger = new Logger(GeoSyncConsumer.name);
+  private readonly geoSyncDisabled: boolean;
 
-  constructor(private readonly geoSyncService: GeoSyncService) {}
+  constructor(
+    private readonly geoSyncService: GeoSyncService,
+    private readonly configService: ConfigService,
+  ) {
+    this.geoSyncDisabled = this.configService.get<string>('DISABLE_GEO_SYNC') === 'true';
+
+    if (this.geoSyncDisabled) {
+      this.logger.warn('Geo sync from vector-api is DISABLED (DISABLE_GEO_SYNC=true). Using OSM data instead.');
+    }
+  }
+
+  private isGeoSyncDisabled(): boolean {
+    if (this.geoSyncDisabled) {
+      this.logger.debug('Geo sync event ignored (DISABLE_GEO_SYNC=true)');
+      return true;
+    }
+    return false;
+  }
 
   // === Geo Events ===
 
@@ -28,6 +47,7 @@ export class GeoSyncConsumer {
     queueOptions: { durable: true },
   })
   async handleGeoCreated(data: GeoEventDto): Promise<void | Nack> {
+    if (this.isGeoSyncDisabled()) return;
     this.logger.log(`Received geo.created event: ${data.id}`);
     try {
       await this.geoSyncService.handleGeoCreated(data);
@@ -44,6 +64,7 @@ export class GeoSyncConsumer {
     queueOptions: { durable: true },
   })
   async handleGeoUpdated(data: GeoEventDto): Promise<void | Nack> {
+    if (this.isGeoSyncDisabled()) return;
     this.logger.log(`Received geo.updated event: ${data.id}`);
     try {
       await this.geoSyncService.handleGeoUpdated(data);
@@ -60,6 +81,7 @@ export class GeoSyncConsumer {
     queueOptions: { durable: true },
   })
   async handleGeoDeleted(data: GeoDeletedEventDto): Promise<void | Nack> {
+    if (this.isGeoSyncDisabled()) return;
     this.logger.log(`Received geo.deleted event: ${data.id}`);
     try {
       await this.geoSyncService.handleGeoDeleted(data.id);
@@ -78,6 +100,7 @@ export class GeoSyncConsumer {
     queueOptions: { durable: true },
   })
   async handleStreetCreated(data: StreetEventDto): Promise<void | Nack> {
+    if (this.isGeoSyncDisabled()) return;
     this.logger.log(`Received street.created event: ${data.id}`);
     try {
       await this.geoSyncService.handleStreetCreated(data);
@@ -94,6 +117,7 @@ export class GeoSyncConsumer {
     queueOptions: { durable: true },
   })
   async handleStreetUpdated(data: StreetEventDto): Promise<void | Nack> {
+    if (this.isGeoSyncDisabled()) return;
     this.logger.log(`Received street.updated event: ${data.id}`);
     try {
       await this.geoSyncService.handleStreetUpdated(data);
@@ -110,6 +134,7 @@ export class GeoSyncConsumer {
     queueOptions: { durable: true },
   })
   async handleStreetDeleted(data: StreetDeletedEventDto): Promise<void | Nack> {
+    if (this.isGeoSyncDisabled()) return;
     this.logger.log(`Received street.deleted event: ${data.id}`);
     try {
       await this.geoSyncService.handleStreetDeleted(data.id);

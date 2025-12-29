@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, DynamicModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { RabbitMQModule as GolevelupRabbitMQModule } from '@golevelup/nestjs-rabbitmq';
 
@@ -44,25 +44,42 @@ export const ROUTING_KEYS = {
   AGGREGATOR_PROPERTY_DELETED: 'valuation.aggregator.property.deleted',
 } as const;
 
-@Module({
-  imports: [
-    GolevelupRabbitMQModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        uri: configService.get<string>('RABBITMQ_URL', 'amqp://guest:guest@localhost:5672'),
-        exchanges: [
-          {
-            name: VALUATION_EXCHANGE,
-            type: 'topic',
-            options: { durable: true },
-          },
-        ],
-        connectionInitOptions: { wait: true },
-        enableControllerDiscovery: true,
-      }),
-    }),
-  ],
-  exports: [GolevelupRabbitMQModule],
-})
-export class RabbitMQModule {}
+@Module({})
+export class RabbitMQModule {
+  static forRoot(): DynamicModule {
+    const rabbitMqUrl = process.env.RABBITMQ_URL;
+    const isRabbitMqEnabled = rabbitMqUrl && rabbitMqUrl.startsWith('amqp');
+
+    if (!isRabbitMqEnabled) {
+      console.log('[RabbitMQModule] RabbitMQ is disabled (RABBITMQ_URL not set or invalid)');
+      return {
+        module: RabbitMQModule,
+        imports: [],
+        exports: [],
+      };
+    }
+
+    return {
+      module: RabbitMQModule,
+      imports: [
+        GolevelupRabbitMQModule.forRootAsync({
+          imports: [ConfigModule],
+          inject: [ConfigService],
+          useFactory: (configService: ConfigService) => ({
+            uri: configService.get<string>('RABBITMQ_URL', 'amqp://guest:guest@localhost:5672'),
+            exchanges: [
+              {
+                name: VALUATION_EXCHANGE,
+                type: 'topic',
+                options: { durable: true },
+              },
+            ],
+            connectionInitOptions: { wait: true },
+            enableControllerDiscovery: true,
+          }),
+        }),
+      ],
+      exports: [GolevelupRabbitMQModule],
+    };
+  }
+}

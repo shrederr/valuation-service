@@ -132,6 +132,12 @@ export class UnifiedListing {
   @Column({ type: 'jsonb', nullable: true })
   public attributes?: Record<string, unknown>;
 
+  @Column({ name: 'primary_data', type: 'jsonb', nullable: true })
+  public primaryData?: Record<string, unknown>;
+
+  @Column({ name: 'realty_platform', type: 'text', nullable: true })
+  public realtyPlatform?: string;
+
   @Column({ type: 'jsonb', nullable: true })
   public description?: MultiLanguageDto;
 
@@ -163,6 +169,21 @@ export class UnifiedListing {
 
   @Column({ name: 'synced_at', type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   public syncedAt: Date;
+
+  // === Geo Resolution Quality ===
+  /**
+   * Flags indicating how geo data was resolved:
+   * - street_not_found: couldn't resolve street from coordinates
+   * - geo_city_level: geo resolved at city level only (no district)
+   * - topzone_missing: topzone not resolved
+   * - complex_by_text: complex matched by text in title/description
+   * - complex_by_coords: complex matched by coordinates proximity
+   * - complex_from_aggregator: complex ID from aggregator data
+   * - condition_fallback: condition used fallback mapping
+   * - house_type_fallback: house_type used fallback mapping
+   */
+  @Column({ name: 'geo_resolution_flags', type: 'text', array: true, nullable: true })
+  public geoResolutionFlags?: string[];
 }
 
 // Alias for backward compatibility

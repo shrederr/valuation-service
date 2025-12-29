@@ -110,11 +110,15 @@ export class PropertySyncService {
 
   async handleAggregatorPropertyCreated(data: AggregatorPropertyEventDto): Promise<void> {
     try {
-      const mapped = this.aggregatorMapper.mapToUnifiedListing(data);
-      const listing = this.listingRepository.create(mapped);
+      const result = await this.aggregatorMapper.mapToUnifiedListing(data);
+      const listing = this.listingRepository.create(result.listing);
 
       await this.listingRepository.save(listing);
-      this.logger.log(`Aggregator property created: ${data.id} (unified: ${listing.id})`);
+      this.logger.log(
+        `Aggregator property created: ${data.id} (unified: ${listing.id}, ` +
+          `geoId: ${listing.geoId}, streetId: ${listing.streetId}, ` +
+          `condition: ${listing.condition}, houseType: ${listing.houseType})`,
+      );
     } catch (error) {
       this.logger.error(`Failed to create aggregator property ${data.id}`, error instanceof Error ? error.stack : undefined);
       throw error;
@@ -131,14 +135,20 @@ export class PropertySyncService {
       });
 
       if (existing) {
-        const mapped = this.aggregatorMapper.mapToUnifiedListing(data);
+        const result = await this.aggregatorMapper.mapToUnifiedListing(data);
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { geo, street, topzone, complex, ...updateData } = mapped;
+        const { geo, street, topzone, complex, ...updateData } = result.listing;
         const merged = this.listingRepository.merge(existing, updateData);
         await this.listingRepository.save(merged);
-        this.logger.log(`Aggregator property updated: ${data.id}`);
-      } else {
+        this.logger.log(
+          `Aggregator property updated: ${data.id} ` +
+            `(geoId: ${merged.geoId}, streetId: ${merged.streetId})`,
+        );
+      } else if (data.isActive) {
+        // Only create new record if property is active
         await this.handleAggregatorPropertyCreated(data);
+      } else {
+        this.logger.debug(`Skipping inactive aggregator property ${data.id} (not in DB)`);
       }
     } catch (error) {
       this.logger.error(`Failed to update aggregator property ${data.id}`, error instanceof Error ? error.stack : undefined);

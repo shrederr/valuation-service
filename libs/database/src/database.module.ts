@@ -2,8 +2,10 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { Geo, Street, Topzone, ApartmentComplex, GeoTopzone, UnifiedListing, ValuationCache } from './entities';
+import { GeoRepository, StreetRepository } from './repositories';
 
 const entities = [Geo, Street, Topzone, ApartmentComplex, GeoTopzone, UnifiedListing, ValuationCache];
+const repositories = [GeoRepository, StreetRepository];
 
 @Module({
   imports: [
@@ -34,6 +36,7 @@ const entities = [Geo, Street, Topzone, ApartmentComplex, GeoTopzone, UnifiedLis
     }),
     TypeOrmModule.forFeature(entities),
   ],
-  exports: [TypeOrmModule],
+  providers: [...repositories],
+  exports: [TypeOrmModule, ...repositories],
 })
 export class DatabaseModule {}
