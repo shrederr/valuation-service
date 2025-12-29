@@ -56,4 +56,16 @@ export class AppController {
     const result = await this.dataSource.query('SELECT COUNT(*) as count FROM streets');
     return { count: parseInt(result[0].count, 10) };
   }
+
+  @Post('admin/truncate-listings')
+  async truncateListings(): Promise<{ success: boolean; message: string }> {
+    await this.dataSource.query('TRUNCATE unified_listings CASCADE');
+    return { success: true, message: 'Unified listings table truncated' };
+  }
+
+  @Get('admin/listings-count')
+  async getListingsCount(): Promise<{ count: number }> {
+    const count = await this.listingRepository.count();
+    return { count };
+  }
 }
