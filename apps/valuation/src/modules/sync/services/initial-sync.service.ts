@@ -263,6 +263,7 @@ export class InitialSyncService implements OnModuleInit {
   private async fetchFromAggregator<T>(endpoint: string, params: Record<string, unknown>): Promise<PaginatedResponseDto<T>> {
     const url = new URL(endpoint, this.aggregatorApiUrl);
     Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, String(value)));
+    this.logger.debug(`Fetching from: ${url.toString()}`);
     try {
       const response = await fetch(url.toString(), {
         headers: {
@@ -271,16 +272,23 @@ export class InitialSyncService implements OnModuleInit {
         },
       });
       if (!response.ok) {
+        const errorBody = await response.text().catch(() => 'Unable to read body');
+        this.logger.error(`Aggregator API error: ${response.status} ${response.statusText} - ${errorBody}`);
         throw new Error(`Aggregator API request failed: ${response.status} ${response.statusText}`);
       }
       const data = await response.json();
+      // Log first response structure for debugging
+      if (params.page === 1) {
+        this.logger.log(`API response structure: keys=${Object.keys(data).join(', ')}, total=${data.total || data.count || 'N/A'}`);
+      }
       if (Array.isArray(data)) {
         return { items: data, total: data.length, page: 1, pageSize: data.length };
       }
+      const items = data.items || data.data || [];
       return {
-        items: data.items || data.data || [],
+        items,
         total: data.total || data.count || 0,
-        page: data.page || 1,
+        page: data.page || data.currentPage || 1,
         pageSize: data.pageSize || data.limit || this.batchSize,
       };
     } catch (error) {

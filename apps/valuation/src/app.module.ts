@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { join } from 'path';
-import { DatabaseModule } from '@libs/database';
+import { DatabaseModule, UnifiedListing } from '@libs/database';
 import { RabbitMQModule } from '@libs/rabbitmq';
 import { SyncModule } from './modules/sync/sync.module';
 import { OsmModule } from './modules/osm/osm.module';
@@ -25,6 +26,7 @@ import { AppService } from './app.service';
       exclude: ['/api/{*path}'],
     }),
     DatabaseModule,
+    TypeOrmModule.forFeature([UnifiedListing]),
     RabbitMQModule.forRoot(),
     SyncModule.forRoot(),
     OsmModule,
