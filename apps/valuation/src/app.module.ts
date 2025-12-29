@@ -26,7 +26,7 @@ import { AppService } from './app.service';
     }),
     DatabaseModule,
     RabbitMQModule.forRoot(),
-    SyncModule,
+    SyncModule.forRoot(),
     OsmModule,
     AnalogsModule,
     FairPriceModule,

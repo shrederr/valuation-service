@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AmqpConnection } from '@golevelup/nestjs-rabbitmq';
 
 /**
@@ -10,13 +10,17 @@ export class ConsumerControlService {
   private readonly logger = new Logger(ConsumerControlService.name);
   private isPaused = false;
 
-  constructor(private readonly amqpConnection: AmqpConnection) {}
+  constructor(@Optional() private readonly amqpConnection?: AmqpConnection) {}
 
   /**
    * Pause all consumers by setting prefetch to 0.
    * Messages will accumulate in RabbitMQ until resumed.
    */
   async pauseConsumers(): Promise<void> {
+    if (!this.amqpConnection) {
+      this.logger.log('RabbitMQ not configured - skip pause');
+      return;
+    }
     if (this.isPaused) {
       this.logger.warn('Consumers already paused');
       return;
@@ -37,6 +41,10 @@ export class ConsumerControlService {
    * Resume consumers by restoring prefetch count.
    */
   async resumeConsumers(prefetchCount = 10): Promise<void> {
+    if (!this.amqpConnection) {
+      this.logger.log('RabbitMQ not configured - skip resume');
+      return;
+    }
     if (!this.isPaused) {
       this.logger.warn('Consumers not paused');
       return;

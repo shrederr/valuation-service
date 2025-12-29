@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, DynamicModule } from '@nestjs/common';
 import { DatabaseModule } from '@libs/database';
 import { RabbitMQModule } from '@libs/rabbitmq';
 import { AttributeMapperService } from '@libs/common';
@@ -12,23 +12,37 @@ import { PropertySyncConsumer } from './consumers/property-sync.consumer';
 import { VectorPropertyMapper } from './mappers/vector-property.mapper';
 import { AggregatorPropertyMapper } from './mappers/aggregator-property.mapper';
 
-@Module({
-  imports: [DatabaseModule, RabbitMQModule, OsmModule],
-  providers: [
-    // Services
-    GeoSyncService,
-    PropertySyncService,
-    InitialSyncService,
-    ConsumerControlService,
-    // Consumers
-    GeoSyncConsumer,
-    PropertySyncConsumer,
-    // Mappers
-    VectorPropertyMapper,
-    AggregatorPropertyMapper,
-    // Attribute mapping
-    AttributeMapperService,
-  ],
-  exports: [GeoSyncService, PropertySyncService, InitialSyncService, ConsumerControlService],
-})
-export class SyncModule {}
+const isRabbitMqEnabled = () => {
+  const url = process.env.RABBITMQ_URL;
+  return url && url.startsWith('amqp');
+};
+
+@Module({})
+export class SyncModule {
+  static forRoot(): DynamicModule {
+    const baseProviders = [
+      // Services
+      GeoSyncService,
+      PropertySyncService,
+      InitialSyncService,
+      ConsumerControlService,
+      // Mappers
+      VectorPropertyMapper,
+      AggregatorPropertyMapper,
+      // Attribute mapping
+      AttributeMapperService,
+    ];
+
+    const consumerProviders = isRabbitMqEnabled() ? [
+      GeoSyncConsumer,
+      PropertySyncConsumer,
+    ] : [];
+
+    return {
+      module: SyncModule,
+      imports: [DatabaseModule, RabbitMQModule.forRoot(), OsmModule],
+      providers: [...baseProviders, ...consumerProviders],
+      exports: [GeoSyncService, PropertySyncService, InitialSyncService, ConsumerControlService],
+    };
+  }
+}
