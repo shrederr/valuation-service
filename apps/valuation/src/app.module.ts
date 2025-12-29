@@ -25,7 +25,7 @@ import { AppService } from './app.service';
       exclude: ['/api/{*path}'],
     }),
     DatabaseModule,
-    RabbitMQModule,
+    RabbitMQModule.forRoot(),
     SyncModule,
     OsmModule,
     AnalogsModule,
