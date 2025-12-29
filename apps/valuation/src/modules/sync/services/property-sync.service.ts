@@ -144,8 +144,11 @@ export class PropertySyncService {
           `Aggregator property updated: ${data.id} ` +
             `(geoId: ${merged.geoId}, streetId: ${merged.streetId})`,
         );
-      } else {
+      } else if (data.isActive) {
+        // Only create new record if property is active
         await this.handleAggregatorPropertyCreated(data);
+      } else {
+        this.logger.debug(`Skipping inactive aggregator property ${data.id} (not in DB)`);
       }
     } catch (error) {
       this.logger.error(`Failed to update aggregator property ${data.id}`, error instanceof Error ? error.stack : undefined);

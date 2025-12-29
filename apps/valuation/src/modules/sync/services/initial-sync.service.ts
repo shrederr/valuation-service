@@ -106,7 +106,7 @@ export class InitialSyncService implements OnModuleInit {
     let page = 1;
     let totalSynced = 0;
     while (true) {
-      const response = await this.fetchFromAggregator<AggregatorPropertyDto>('properties/list', { page, perPage: this.batchSize });
+      const response = await this.fetchFromAggregator<AggregatorPropertyDto>('properties/list', { page, perPage: this.batchSize, isActive: true });
       if (!response.items || response.items.length === 0) break;
       for (const item of response.items) {
         await this.upsertAggregatorProperty(item);
