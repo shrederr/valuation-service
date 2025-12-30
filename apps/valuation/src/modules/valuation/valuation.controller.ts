@@ -30,8 +30,30 @@ export class ValuationController {
     }
 
     const sourceId = parseInt(id, 10);
-    const sourceType = (source as SourceType) || SourceType.VECTOR;
 
-    return this.valuationService.getFullReport({ sourceType, sourceId, forceRefresh });
+    // If source is specified, use it directly
+    if (source) {
+      return this.valuationService.getFullReport({
+        sourceType: source as SourceType,
+        sourceId,
+        forceRefresh,
+      });
+    }
+
+    // Auto mode: try aggregator first (most objects), then vector
+    try {
+      return await this.valuationService.getFullReport({
+        sourceType: SourceType.AGGREGATOR,
+        sourceId,
+        forceRefresh,
+      });
+    } catch {
+      // If not found in aggregator, try vector
+      return this.valuationService.getFullReport({
+        sourceType: SourceType.VECTOR,
+        sourceId,
+        forceRefresh,
+      });
+    }
   }
 }
