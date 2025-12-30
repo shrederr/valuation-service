@@ -68,4 +68,11 @@ export class AppController {
     const count = await this.listingRepository.count();
     return { count };
   }
+
+  @Get('admin/listings-stats')
+  async getListingsStats(): Promise<{ total: number; active: number; inactive: number }> {
+    const total = await this.listingRepository.count();
+    const active = await this.listingRepository.count({ where: { isActive: true } });
+    return { total, active, inactive: total - active };
+  }
 }
