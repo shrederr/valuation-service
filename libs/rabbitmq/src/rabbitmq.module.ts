@@ -2,10 +2,10 @@ import { Module, DynamicModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { RabbitMQModule as GolevelupRabbitMQModule } from '@golevelup/nestjs-rabbitmq';
 
-// Exchange from vector-api
+// Exchange from vector-api (for customer property events)
 export const VECTOR_EVENTS_EXCHANGE = 'vector-events';
-// Exchange from api-property-aggregator
-export const AGGREGATOR_EVENTS_EXCHANGE = 'aggregator-events';
+// Exchange from api-property-aggregator (valuation_exchange, NOT aggregator-events!)
+export const AGGREGATOR_EVENTS_EXCHANGE = 'valuation_exchange';
 
 export const QUEUES = {
   // Vector property sync queues
@@ -25,10 +25,10 @@ export const ROUTING_KEYS = {
   VECTOR_PROPERTY_UPDATED: 'customer-property.updated',
   VECTOR_PROPERTY_ARCHIVED: 'customer-property.archived',
   VECTOR_PROPERTY_UNARCHIVED: 'customer-property.unarchived',
-  // From api-property-aggregator: Exported Property events (exchange: aggregator-events)
-  AGGREGATOR_PROPERTY_CREATED: 'exported-property.created',
-  AGGREGATOR_PROPERTY_UPDATED: 'exported-property.updated',
-  AGGREGATOR_PROPERTY_DELETED: 'exported-property.deleted',
+  // From api-property-aggregator: Exported Property events (exchange: valuation_exchange)
+  AGGREGATOR_PROPERTY_CREATED: 'valuation.aggregator.property.created',
+  AGGREGATOR_PROPERTY_UPDATED: 'valuation.aggregator.property.updated',
+  AGGREGATOR_PROPERTY_DELETED: 'valuation.aggregator.property.deleted',
   // Geo events (not yet implemented in vector-api, kept for compatibility)
   GEO_CREATED: 'geo.created',
   GEO_UPDATED: 'geo.updated',

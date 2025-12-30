@@ -61,12 +61,16 @@ export class AggregatorPropertyMapper {
       // Build text for street matching from address/title
       const textForMatching = this.buildTextForMatching(data);
 
+      this.logger.debug(`Calling geoLookupService for property ${data.id}: lng=${data.lng}, lat=${data.lat}`);
+
       geoResolution = await this.geoLookupService.resolveGeoForListingWithText(
         data.lng,
         data.lat,
         textForMatching,
         data.geoId,
       );
+
+      this.logger.debug(`GeoLookup result for property ${data.id}: geoId=${geoResolution.geoId}, streetId=${geoResolution.streetId}`);
 
       if (geoResolution.geoId) {
         geoId = geoResolution.geoId;
@@ -81,6 +85,8 @@ export class AggregatorPropertyMapper {
           `Street matched by ${geoResolution.streetMatchMethod} for aggregator property ${data.id}: streetId=${streetId}`,
         );
       }
+    } else {
+      this.logger.warn(`No coordinates for property ${data.id}: lng=${data.lng}, lat=${data.lat}`);
     }
 
     // Map condition and houseType using platform-specific mappings

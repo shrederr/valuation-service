@@ -110,6 +110,9 @@ export class PropertySyncService {
 
   async handleAggregatorPropertyCreated(data: AggregatorPropertyEventDto): Promise<void> {
     try {
+      this.logger.debug(
+        `Aggregator property ${data.id} incoming data: lat=${data.lat}, lng=${data.lng}, geoId=${data.geoId}, streetId=${data.streetId}`,
+      );
       const result = await this.aggregatorMapper.mapToUnifiedListing(data);
       const listing = this.listingRepository.create(result.listing);
 
