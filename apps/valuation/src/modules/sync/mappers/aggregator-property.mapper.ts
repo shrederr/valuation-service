@@ -64,12 +64,17 @@ export class AggregatorPropertyMapper {
 
     // Fallback: try to extract from primaryData if main coords are missing
     if ((!lng || !lat) && data.primaryData) {
+      this.logger.debug(`Property ${data.id} checking primaryData for coords. Has primaryData: ${!!data.primaryData}, keys: ${Object.keys(data.primaryData || {}).slice(0, 10).join(',')}`);
       const fallbackCoords = this.extractCoordsFromPrimaryData(data.primaryData, data.realtyPlatform);
       if (fallbackCoords.lat && fallbackCoords.lng) {
         lat = fallbackCoords.lat;
         lng = fallbackCoords.lng;
         this.logger.debug(`Property ${data.id} using coords from primaryData: lng=${lng}, lat=${lat}`);
+      } else {
+        this.logger.debug(`Property ${data.id} no coords found in primaryData`);
       }
+    } else if (!lng || !lat) {
+      this.logger.debug(`Property ${data.id} no primaryData available for fallback`);
     }
 
     this.logger.debug(`Property ${data.id} raw coords: lng=${data.lng} (type: ${typeof data.lng}), lat=${data.lat} (type: ${typeof data.lat})`);
@@ -262,7 +267,8 @@ export class AggregatorPropertyMapper {
     platform?: string,
   ): { lat: number | null; lng: number | null } {
     // DomRia: latitude, longitude fields directly
-    if (primaryData.latitude !== undefined && primaryData.longitude !== undefined) {
+    if (primaryData.latitude !== undefined || primaryData.longitude !== undefined) {
+      this.logger.debug(`primaryData has latitude=${primaryData.latitude}, longitude=${primaryData.longitude}`);
       const lat = this.extractNumber(primaryData.latitude);
       const lng = this.extractNumber(primaryData.longitude);
       if (lat && lng) return { lat, lng };
@@ -271,6 +277,7 @@ export class AggregatorPropertyMapper {
     // OLX: map.lat, map.lon
     if (primaryData.map && typeof primaryData.map === 'object') {
       const map = primaryData.map as Record<string, unknown>;
+      this.logger.debug(`primaryData has map: lat=${map.lat}, lon=${map.lon}`);
       const lat = this.extractNumber(map.lat);
       const lng = this.extractNumber(map.lon);
       if (lat && lng) return { lat, lng };
@@ -279,30 +286,37 @@ export class AggregatorPropertyMapper {
     // RealtorUa / MLS: description.location as "lng,lat" string
     if (primaryData.description && typeof primaryData.description === 'object') {
       const desc = primaryData.description as Record<string, unknown>;
-      if (typeof desc.location === 'string' && desc.location.includes(',')) {
-        const parts = desc.location.split(',');
-        if (parts.length >= 2) {
-          // RealtorUa format: "lng,lat"
-          const lng = this.extractNumber(parts[0].trim());
-          const lat = this.extractNumber(parts[1].trim());
-          if (lat && lng) return { lat, lng };
+      if (typeof desc.location === 'string') {
+        this.logger.debug(`primaryData.description.location=${desc.location}`);
+        if (desc.location.includes(',')) {
+          const parts = desc.location.split(',');
+          if (parts.length >= 2) {
+            // RealtorUa format: "lng,lat"
+            const lng = this.extractNumber(parts[0].trim());
+            const lat = this.extractNumber(parts[1].trim());
+            if (lat && lng) return { lat, lng };
+          }
         }
       }
     }
 
     // MLS: location field directly as "lat,lng" string
-    if (typeof primaryData.location === 'string' && primaryData.location.includes(',')) {
-      const parts = primaryData.location.split(',');
-      if (parts.length >= 2) {
-        // MLS format: "lat,lng"
-        const lat = this.extractNumber(parts[0].trim());
-        const lng = this.extractNumber(parts[1].trim());
-        if (lat && lng) return { lat, lng };
+    if (typeof primaryData.location === 'string') {
+      this.logger.debug(`primaryData.location=${primaryData.location}`);
+      if (primaryData.location.includes(',')) {
+        const parts = primaryData.location.split(',');
+        if (parts.length >= 2) {
+          // MLS format: "lat,lng"
+          const lat = this.extractNumber(parts[0].trim());
+          const lng = this.extractNumber(parts[1].trim());
+          if (lat && lng) return { lat, lng };
+        }
       }
     }
 
     // RealEstateLviv: ad_lat, ad_long
-    if (primaryData.ad_lat !== undefined && primaryData.ad_long !== undefined) {
+    if (primaryData.ad_lat !== undefined || primaryData.ad_long !== undefined) {
+      this.logger.debug(`primaryData has ad_lat=${primaryData.ad_lat}, ad_long=${primaryData.ad_long}`);
       const lat = this.extractNumber(primaryData.ad_lat);
       const lng = this.extractNumber(primaryData.ad_long);
       if (lat && lng) return { lat, lng };
