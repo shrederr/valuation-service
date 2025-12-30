@@ -55,6 +55,7 @@ export class AggregatorPropertyEventDto {
   public description: Record<string, string>;
   public images: string[];
   public url: string;
+  public external_url: string;
   public hash: string;
   public isActive: boolean;
   public isExported: boolean;

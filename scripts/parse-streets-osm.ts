@@ -42,6 +42,35 @@ const main = async (): Promise<void> => {
       console.log(`  Settlements failed: ${result.settlementsFailed}`);
       console.log(`  Total streets: ${result.totalStreets}`);
       console.log(`  Errors: ${result.totalErrors}`);
+    } else if (command === 'all') {
+      console.log('Parsing streets for ALL regions...\n');
+      const regions = await streetOsmParserService.getAvailableRegions();
+
+      if (regions.length === 0) {
+        console.log('No regions found. Run parse-geo-osm first.');
+        process.exit(1);
+      }
+
+      let totalStreets = 0;
+      let totalErrors = 0;
+
+      for (const region of regions) {
+        console.log(`\n=== ${region.name} (${region.alias}) ===`);
+        try {
+          const result = await streetOsmParserService.parseRegionStreets(region.id);
+          totalStreets += result.totalStreets;
+          totalErrors += result.totalErrors;
+          console.log(`  Streets: ${result.totalStreets}, Errors: ${result.totalErrors}`);
+        } catch (err) {
+          console.error(`  Failed: ${(err as Error).message}`);
+          totalErrors++;
+        }
+      }
+
+      console.log(`\n=== TOTAL ===`);
+      console.log(`  Regions: ${regions.length}`);
+      console.log(`  Streets: ${totalStreets}`);
+      console.log(`  Errors: ${totalErrors}`);
     } else if (command === 'settlement' && args[1]) {
       const geoId = parseInt(args[1], 10);
 
@@ -71,11 +100,13 @@ const main = async (): Promise<void> => {
     } else {
       console.log('Usage:');
       console.log('  yarn parse-streets-osm list                    - List available regions');
+      console.log('  yarn parse-streets-osm all                     - Parse streets for ALL regions');
       console.log('  yarn parse-streets-osm region <alias>          - Parse all streets in region');
       console.log('  yarn parse-streets-osm settlement <id>         - Parse streets for single settlement');
       console.log('  yarn parse-streets-osm settlements <alias>     - List settlements in region');
       console.log('');
       console.log('Examples:');
+      console.log('  yarn parse-streets-osm all');
       console.log('  yarn parse-streets-osm region odeska-oblast');
       console.log('  yarn parse-streets-osm settlement 12345');
     }

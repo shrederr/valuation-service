@@ -125,7 +125,7 @@ export class AggregatorPropertyMapper {
       description: data.description ? { uk: data.description.uk || '' } : undefined,
       isActive: data.isActive ?? true,
       isExclusive: false,
-      externalUrl: data.url || (data.primaryData as Record<string, unknown>)?.url as string || (data.primaryData as Record<string, unknown>)?.link as string || undefined,
+      externalUrl: data.external_url || data.url || undefined,
       publishedAt: data.createdAt ? new Date(data.createdAt) : undefined,
       deletedAt: data.deletedAt ? new Date(data.deletedAt) : undefined,
       syncedAt: new Date(),
