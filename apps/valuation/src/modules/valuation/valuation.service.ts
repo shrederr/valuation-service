@@ -102,6 +102,7 @@ export class ValuationService {
       floor: listing.floor,
       totalFloors: listing.totalFloors,
       askingPrice: listing.price ? Number(listing.price) : undefined,
+      externalUrl: listing.externalUrl || undefined,
     };
   }
 

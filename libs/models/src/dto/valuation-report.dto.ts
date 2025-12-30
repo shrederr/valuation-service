@@ -30,6 +30,9 @@ export class PropertyInfoDto {
 
   @ApiPropertyOptional({ description: 'Asking price if available' })
   public askingPrice?: number;
+
+  @ApiPropertyOptional({ description: 'External URL to view on original platform' })
+  public externalUrl?: string;
 }
 
 export class ValuationReportDto {
