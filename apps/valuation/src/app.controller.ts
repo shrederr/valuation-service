@@ -75,4 +75,42 @@ export class AppController {
     const active = await this.listingRepository.count({ where: { isActive: true } });
     return { total, active, inactive: total - active };
   }
+
+  @Post('admin/recalculate-price-per-meter')
+  async recalculatePricePerMeter(): Promise<{ success: boolean; updated: number }> {
+    // Update all records where price and totalArea exist but pricePerMeter is null or 0
+    const result = await this.dataSource.query(`
+      UPDATE unified_listings
+      SET price_per_meter = price / total_area
+      WHERE price IS NOT NULL
+        AND price > 0
+        AND total_area IS NOT NULL
+        AND total_area > 0
+        AND (price_per_meter IS NULL OR price_per_meter = 0)
+    `);
+    return { success: true, updated: result[1] || 0 };
+  }
+
+  @Get('admin/price-per-meter-stats')
+  async getPricePerMeterStats(): Promise<{ withPPM: number; withoutPPM: number; canCalculate: number }> {
+    const withPPM = await this.dataSource.query(`
+      SELECT COUNT(*) as count FROM unified_listings
+      WHERE price_per_meter IS NOT NULL AND price_per_meter > 0
+    `);
+    const withoutPPM = await this.dataSource.query(`
+      SELECT COUNT(*) as count FROM unified_listings
+      WHERE price_per_meter IS NULL OR price_per_meter = 0
+    `);
+    const canCalculate = await this.dataSource.query(`
+      SELECT COUNT(*) as count FROM unified_listings
+      WHERE (price_per_meter IS NULL OR price_per_meter = 0)
+        AND price IS NOT NULL AND price > 0
+        AND total_area IS NOT NULL AND total_area > 0
+    `);
+    return {
+      withPPM: parseInt(withPPM[0].count, 10),
+      withoutPPM: parseInt(withoutPPM[0].count, 10),
+      canCalculate: parseInt(canCalculate[0].count, 10),
+    };
+  }
 }

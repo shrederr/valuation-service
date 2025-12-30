@@ -30,8 +30,21 @@ export class AggregatorPropertyMapper {
   async mapToUnifiedListing(data: AggregatorPropertyEventDto): Promise<MappingResult> {
     const dealType = this.mapDealType(data.dealType);
     const realtyType = this.mapRealtyType(data.realtyType);
-    const totalArea = this.extractNumber(data.attributes?.totalArea);
+    const attrs = data.attributes || {};
+
+    // Extract values with fallbacks for different naming conventions (snake_case vs camelCase)
+    const totalArea = this.extractNumber(attrs.square_total ?? attrs.totalArea);
+    const livingArea = this.extractNumber(attrs.square_living ?? attrs.livingArea);
+    const kitchenArea = this.extractNumber(attrs.square_kitchen ?? attrs.kitchenArea);
+    const rooms = this.extractNumber(attrs.rooms_count ?? attrs.rooms);
+    const floor = this.extractNumber(attrs.floor);
+    const totalFloors = this.extractNumber(attrs.floors_count ?? attrs.totalFloors);
     const price = data.price;
+
+    // Price per meter: use existing value or calculate
+    const existingPricePerMeter = this.extractNumber(attrs.price_sqr ?? attrs.pricePerMeter);
+    const calculatedPricePerMeter = totalArea && price ? price / totalArea : null;
+    const pricePerMeter = existingPricePerMeter ?? calculatedPricePerMeter;
 
     // Detect platform from realty_platform or URL
     const platform = this.attributeMapperService.detectPlatform(
@@ -89,25 +102,25 @@ export class AggregatorPropertyMapper {
       topzoneId: data.topzoneId || undefined,
       complexId: data.complexId || undefined,
       houseNumber: data.houseNumber || undefined,
-      apartmentNumber: this.extractNumber(data.attributes?.apartmentNumber) ?? undefined,
-      corps: (data.attributes?.corps as string) || undefined,
+      apartmentNumber: this.extractNumber(attrs.apartmentNumber) ?? undefined,
+      corps: (attrs.corps as string) || undefined,
       lat: data.lat || undefined,
       lng: data.lng || undefined,
       price: price || undefined,
       currency: data.currency || 'USD',
-      pricePerMeter: totalArea && price ? price / totalArea : undefined,
+      pricePerMeter: pricePerMeter ?? undefined,
       totalArea: totalArea ?? undefined,
-      livingArea: this.extractNumber(data.attributes?.livingArea) ?? undefined,
-      kitchenArea: this.extractNumber(data.attributes?.kitchenArea) ?? undefined,
-      landArea: this.extractNumber(data.attributes?.landArea) ?? undefined,
-      rooms: this.extractNumber(data.attributes?.rooms) ?? undefined,
-      floor: this.extractNumber(data.attributes?.floor) ?? undefined,
-      totalFloors: this.extractNumber(data.attributes?.totalFloors) ?? undefined,
+      livingArea: livingArea ?? undefined,
+      kitchenArea: kitchenArea ?? undefined,
+      landArea: this.extractNumber(attrs.landArea) ?? undefined,
+      rooms: rooms ?? undefined,
+      floor: floor ?? undefined,
+      totalFloors: totalFloors ?? undefined,
       // Use mapped condition/houseType instead of raw values
       condition: attributeResult.condition || undefined,
       houseType: attributeResult.houseType || undefined,
-      planningType: (data.attributes?.planningType as string) || undefined,
-      heatingType: (data.attributes?.heatingType as string) || undefined,
+      planningType: (attrs.planningType as string) || undefined,
+      heatingType: (attrs.heatingType as string) || undefined,
       attributes: data.attributes || undefined,
       description: data.description ? { uk: data.description.uk || '' } : undefined,
       isActive: data.isActive ?? true,
