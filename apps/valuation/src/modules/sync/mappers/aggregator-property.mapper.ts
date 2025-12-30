@@ -58,11 +58,22 @@ export class AggregatorPropertyMapper {
     let streetId = data.streetId || undefined;
 
     // Extract coordinates - handle Prisma Decimal objects from aggregator
-    const lng = this.extractNumber(data.lng);
-    const lat = this.extractNumber(data.lat);
+    // First try main payload, then fallback to primaryData
+    let lng = this.extractNumber(data.lng);
+    let lat = this.extractNumber(data.lat);
+
+    // Fallback: try to extract from primaryData if main coords are missing
+    if ((!lng || !lat) && data.primaryData) {
+      const fallbackCoords = this.extractCoordsFromPrimaryData(data.primaryData, data.realtyPlatform);
+      if (fallbackCoords.lat && fallbackCoords.lng) {
+        lat = fallbackCoords.lat;
+        lng = fallbackCoords.lng;
+        this.logger.debug(`Property ${data.id} using coords from primaryData: lng=${lng}, lat=${lat}`);
+      }
+    }
 
     this.logger.debug(`Property ${data.id} raw coords: lng=${data.lng} (type: ${typeof data.lng}), lat=${data.lat} (type: ${typeof data.lat})`);
-    this.logger.debug(`Property ${data.id} extracted coords: lng=${lng}, lat=${lat}`);
+    this.logger.debug(`Property ${data.id} final coords: lng=${lng}, lat=${lat}`);
 
     if (lng && lat) {
       // Build text for street matching from address/title
@@ -240,5 +251,63 @@ export class AggregatorPropertyMapper {
       }
     }
     return null;
+  }
+
+  /**
+   * Try to extract coordinates from primaryData based on platform
+   * This is a fallback when main lat/lng fields are missing from the event
+   */
+  private extractCoordsFromPrimaryData(
+    primaryData: Record<string, unknown>,
+    platform?: string,
+  ): { lat: number | null; lng: number | null } {
+    // DomRia: latitude, longitude fields directly
+    if (primaryData.latitude !== undefined && primaryData.longitude !== undefined) {
+      const lat = this.extractNumber(primaryData.latitude);
+      const lng = this.extractNumber(primaryData.longitude);
+      if (lat && lng) return { lat, lng };
+    }
+
+    // OLX: map.lat, map.lon
+    if (primaryData.map && typeof primaryData.map === 'object') {
+      const map = primaryData.map as Record<string, unknown>;
+      const lat = this.extractNumber(map.lat);
+      const lng = this.extractNumber(map.lon);
+      if (lat && lng) return { lat, lng };
+    }
+
+    // RealtorUa / MLS: description.location as "lng,lat" string
+    if (primaryData.description && typeof primaryData.description === 'object') {
+      const desc = primaryData.description as Record<string, unknown>;
+      if (typeof desc.location === 'string' && desc.location.includes(',')) {
+        const parts = desc.location.split(',');
+        if (parts.length >= 2) {
+          // RealtorUa format: "lng,lat"
+          const lng = this.extractNumber(parts[0].trim());
+          const lat = this.extractNumber(parts[1].trim());
+          if (lat && lng) return { lat, lng };
+        }
+      }
+    }
+
+    // MLS: location field directly as "lat,lng" string
+    if (typeof primaryData.location === 'string' && primaryData.location.includes(',')) {
+      const parts = primaryData.location.split(',');
+      if (parts.length >= 2) {
+        // MLS format: "lat,lng"
+        const lat = this.extractNumber(parts[0].trim());
+        const lng = this.extractNumber(parts[1].trim());
+        if (lat && lng) return { lat, lng };
+      }
+    }
+
+    // RealEstateLviv: ad_lat, ad_long
+    if (primaryData.ad_lat !== undefined && primaryData.ad_long !== undefined) {
+      const lat = this.extractNumber(primaryData.ad_lat);
+      const lng = this.extractNumber(primaryData.ad_long);
+      if (lat && lng) return { lat, lng };
+    }
+
+    return { lat: null, lng: null };
   }
 }
