@@ -20,6 +20,7 @@ const elements = {
 
   // Property
   propertyAddress: document.getElementById('propertyAddress'),
+  propertyExternalLink: document.getElementById('propertyExternalLink'),
   propertyComplex: document.getElementById('propertyComplex'),
   propertyArea: document.getElementById('propertyArea'),
   propertyRooms: document.getElementById('propertyRooms'),
@@ -246,6 +247,14 @@ function displayPropertyInfo(property) {
   if (!property) return;
 
   elements.propertyAddress.textContent = property.address || 'Адреса не вказана';
+
+  // External link
+  if (property.externalUrl) {
+    elements.propertyExternalLink.href = property.externalUrl;
+    elements.propertyExternalLink.classList.remove('hidden');
+  } else {
+    elements.propertyExternalLink.classList.add('hidden');
+  }
 
   // Show complex name if available
   if (property.complexName) {
