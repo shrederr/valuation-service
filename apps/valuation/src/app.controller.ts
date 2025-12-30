@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Res } from '@nestjs/common';
+import { Controller, Get, Param, Post, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { join } from 'path';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -117,6 +117,42 @@ export class AppController {
       ORDER BY count DESC
     `);
     return { platforms: result.map((r: { platform: string; count: string }) => ({ platform: r.platform, count: parseInt(r.count, 10) })) };
+  }
+
+  @Get('admin/sample-primary-data')
+  async getSamplePrimaryData(): Promise<unknown[]> {
+    // Get sample listings with primaryData to see URL structure
+    const result = await this.dataSource.query(`
+      SELECT source_id, realty_platform, external_url,
+             primary_data->>'url' as pd_url,
+             primary_data->>'link' as pd_link,
+             primary_data->>'original_url' as pd_original_url
+      FROM unified_listings
+      WHERE primary_data IS NOT NULL
+      LIMIT 5
+    `);
+    return result;
+  }
+
+  @Post('admin/extract-urls-from-primary-data')
+  async extractUrlsFromPrimaryData(): Promise<{ success: boolean; updated: number }> {
+    // Extract URLs from primaryData.url or primaryData.link
+    const result = await this.dataSource.query(`
+      UPDATE unified_listings
+      SET external_url = COALESCE(
+        primary_data->>'url',
+        primary_data->>'link',
+        primary_data->>'original_url'
+      )
+      WHERE (external_url IS NULL OR external_url = '')
+        AND primary_data IS NOT NULL
+        AND (
+          primary_data->>'url' IS NOT NULL OR
+          primary_data->>'link' IS NOT NULL OR
+          primary_data->>'original_url' IS NOT NULL
+        )
+    `);
+    return { success: true, updated: result[1] || 0 };
   }
 
   @Get('admin/price-per-meter-stats')

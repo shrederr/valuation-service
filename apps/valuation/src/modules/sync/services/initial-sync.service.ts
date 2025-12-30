@@ -223,7 +223,7 @@ export class InitialSyncService implements OnModuleInit {
       primaryData: data.primaryData as Record<string, unknown>,
       realtyPlatform: platform,
       description: data.description as unknown as MultiLanguageDto,
-      externalUrl: data.url,
+      externalUrl: data.url || (data.primaryData as Record<string, unknown>)?.url as string || (data.primaryData as Record<string, unknown>)?.link as string || undefined,
       isActive: data.isActive,
       syncedAt: new Date(),
     };
