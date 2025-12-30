@@ -67,11 +67,17 @@ export class RabbitMQModule {
           inject: [ConfigService],
           useFactory: (configService: ConfigService) => ({
             uri: configService.get<string>('RABBITMQ_URL', 'amqp://guest:guest@localhost:5672'),
-            deserializer: (message: Buffer) => {
+            deserializer: (message: Buffer, msg: any) => {
+              const str = message.toString();
+              console.log('[Deserializer] Raw message type:', typeof message, 'isBuffer:', Buffer.isBuffer(message));
+              console.log('[Deserializer] Raw string (first 200 chars):', str.substring(0, 200));
               try {
-                return JSON.parse(message.toString());
-              } catch {
-                return message.toString();
+                const parsed = JSON.parse(str);
+                console.log('[Deserializer] Parsed has lat:', 'lat' in parsed, 'lng:', 'lng' in parsed);
+                return parsed;
+              } catch (e) {
+                console.log('[Deserializer] Parse error:', e);
+                return str;
               }
             },
             exchanges: [
