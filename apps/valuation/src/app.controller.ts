@@ -91,6 +91,22 @@ export class AppController {
     return { success: true, updated: result[1] || 0 };
   }
 
+  @Get('admin/external-url-stats')
+  async getExternalUrlStats(): Promise<{ withUrl: number; withoutUrl: number }> {
+    const withUrl = await this.dataSource.query(`
+      SELECT COUNT(*) as count FROM unified_listings
+      WHERE external_url IS NOT NULL AND external_url != ''
+    `);
+    const withoutUrl = await this.dataSource.query(`
+      SELECT COUNT(*) as count FROM unified_listings
+      WHERE external_url IS NULL OR external_url = ''
+    `);
+    return {
+      withUrl: parseInt(withUrl[0].count, 10),
+      withoutUrl: parseInt(withoutUrl[0].count, 10),
+    };
+  }
+
   @Get('admin/price-per-meter-stats')
   async getPricePerMeterStats(): Promise<{ withPPM: number; withoutPPM: number; canCalculate: number }> {
     const withPPM = await this.dataSource.query(`
