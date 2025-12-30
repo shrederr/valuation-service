@@ -107,6 +107,18 @@ export class AppController {
     };
   }
 
+  @Get('admin/platform-stats')
+  async getPlatformStats(): Promise<{ platforms: Array<{ platform: string; count: number }> }> {
+    const result = await this.dataSource.query(`
+      SELECT realty_platform as platform, COUNT(*) as count
+      FROM unified_listings
+      WHERE realty_platform IS NOT NULL
+      GROUP BY realty_platform
+      ORDER BY count DESC
+    `);
+    return { platforms: result.map((r: { platform: string; count: string }) => ({ platform: r.platform, count: parseInt(r.count, 10) })) };
+  }
+
   @Get('admin/price-per-meter-stats')
   async getPricePerMeterStats(): Promise<{ withPPM: number; withoutPPM: number; canCalculate: number }> {
     const withPPM = await this.dataSource.query(`
