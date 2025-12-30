@@ -210,7 +210,7 @@ export class InitialSyncService implements OnModuleInit {
       lng,
       price: data.price,
       currency: data.currency || 'USD',
-      pricePerMeter: this.extractNumber(data.attributes?.price_sqr ?? data.attributes?.pricePerMeter),
+      pricePerMeter: this.calculatePricePerMeter(data),
       totalArea: this.extractNumber(data.attributes?.square_total ?? data.attributes?.totalArea),
       livingArea: this.extractNumber(data.attributes?.square_living ?? data.attributes?.livingArea),
       kitchenArea: this.extractNumber(data.attributes?.square_kitchen ?? data.attributes?.kitchenArea),
@@ -364,5 +364,23 @@ export class InitialSyncService implements OnModuleInit {
     const num = this.extractNumber(value);
     if (num === undefined) return undefined;
     return Math.floor(num);
+  }
+
+  private calculatePricePerMeter(data: AggregatorPropertyDto): number | undefined {
+    // First try to get existing value from attributes
+    const existingPPM = this.extractNumber(data.attributes?.price_sqr ?? data.attributes?.pricePerMeter);
+    if (existingPPM && existingPPM > 0) {
+      return existingPPM;
+    }
+
+    // Calculate from price and totalArea
+    const price = data.price;
+    const totalArea = this.extractNumber(data.attributes?.square_total ?? data.attributes?.totalArea);
+
+    if (price && price > 0 && totalArea && totalArea > 0) {
+      return price / totalArea;
+    }
+
+    return undefined;
   }
 }
