@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RabbitSubscribe, Nack } from '@golevelup/nestjs-rabbitmq';
-import { VALUATION_EXCHANGE, QUEUES, ROUTING_KEYS } from '@libs/rabbitmq';
+import { VECTOR_EVENTS_EXCHANGE, QUEUES, ROUTING_KEYS } from '@libs/rabbitmq';
 import { GeoSyncService } from '../services/geo-sync.service';
 import {
   GeoEventDto,
@@ -41,7 +41,7 @@ export class GeoSyncConsumer {
   // === Geo Events ===
 
   @RabbitSubscribe({
-    exchange: VALUATION_EXCHANGE,
+    exchange: VECTOR_EVENTS_EXCHANGE,
     routingKey: ROUTING_KEYS.GEO_CREATED,
     queue: QUEUES.GEO_SYNC,
     queueOptions: { durable: true },
@@ -58,7 +58,7 @@ export class GeoSyncConsumer {
   }
 
   @RabbitSubscribe({
-    exchange: VALUATION_EXCHANGE,
+    exchange: VECTOR_EVENTS_EXCHANGE,
     routingKey: ROUTING_KEYS.GEO_UPDATED,
     queue: QUEUES.GEO_SYNC,
     queueOptions: { durable: true },
@@ -75,7 +75,7 @@ export class GeoSyncConsumer {
   }
 
   @RabbitSubscribe({
-    exchange: VALUATION_EXCHANGE,
+    exchange: VECTOR_EVENTS_EXCHANGE,
     routingKey: ROUTING_KEYS.GEO_DELETED,
     queue: QUEUES.GEO_SYNC,
     queueOptions: { durable: true },
@@ -94,7 +94,7 @@ export class GeoSyncConsumer {
   // === Street Events ===
 
   @RabbitSubscribe({
-    exchange: VALUATION_EXCHANGE,
+    exchange: VECTOR_EVENTS_EXCHANGE,
     routingKey: ROUTING_KEYS.STREET_CREATED,
     queue: QUEUES.STREET_SYNC,
     queueOptions: { durable: true },
@@ -111,7 +111,7 @@ export class GeoSyncConsumer {
   }
 
   @RabbitSubscribe({
-    exchange: VALUATION_EXCHANGE,
+    exchange: VECTOR_EVENTS_EXCHANGE,
     routingKey: ROUTING_KEYS.STREET_UPDATED,
     queue: QUEUES.STREET_SYNC,
     queueOptions: { durable: true },
@@ -128,7 +128,7 @@ export class GeoSyncConsumer {
   }
 
   @RabbitSubscribe({
-    exchange: VALUATION_EXCHANGE,
+    exchange: VECTOR_EVENTS_EXCHANGE,
     routingKey: ROUTING_KEYS.STREET_DELETED,
     queue: QUEUES.STREET_SYNC,
     queueOptions: { durable: true },
@@ -147,7 +147,7 @@ export class GeoSyncConsumer {
   // === Topzone Events ===
 
   @RabbitSubscribe({
-    exchange: VALUATION_EXCHANGE,
+    exchange: VECTOR_EVENTS_EXCHANGE,
     routingKey: ROUTING_KEYS.TOPZONE_CREATED,
     queue: QUEUES.TOPZONE_SYNC,
     queueOptions: { durable: true },
@@ -163,7 +163,7 @@ export class GeoSyncConsumer {
   }
 
   @RabbitSubscribe({
-    exchange: VALUATION_EXCHANGE,
+    exchange: VECTOR_EVENTS_EXCHANGE,
     routingKey: ROUTING_KEYS.TOPZONE_UPDATED,
     queue: QUEUES.TOPZONE_SYNC,
     queueOptions: { durable: true },
@@ -179,7 +179,7 @@ export class GeoSyncConsumer {
   }
 
   @RabbitSubscribe({
-    exchange: VALUATION_EXCHANGE,
+    exchange: VECTOR_EVENTS_EXCHANGE,
     routingKey: ROUTING_KEYS.TOPZONE_DELETED,
     queue: QUEUES.TOPZONE_SYNC,
     queueOptions: { durable: true },
@@ -197,7 +197,7 @@ export class GeoSyncConsumer {
   // === Complex Events ===
 
   @RabbitSubscribe({
-    exchange: VALUATION_EXCHANGE,
+    exchange: VECTOR_EVENTS_EXCHANGE,
     routingKey: ROUTING_KEYS.COMPLEX_CREATED,
     queue: QUEUES.COMPLEX_SYNC,
     queueOptions: { durable: true },
@@ -213,7 +213,7 @@ export class GeoSyncConsumer {
   }
 
   @RabbitSubscribe({
-    exchange: VALUATION_EXCHANGE,
+    exchange: VECTOR_EVENTS_EXCHANGE,
     routingKey: ROUTING_KEYS.COMPLEX_UPDATED,
     queue: QUEUES.COMPLEX_SYNC,
     queueOptions: { durable: true },
@@ -229,7 +229,7 @@ export class GeoSyncConsumer {
   }
 
   @RabbitSubscribe({
-    exchange: VALUATION_EXCHANGE,
+    exchange: VECTOR_EVENTS_EXCHANGE,
     routingKey: ROUTING_KEYS.COMPLEX_DELETED,
     queue: QUEUES.COMPLEX_SYNC,
     queueOptions: { durable: true },

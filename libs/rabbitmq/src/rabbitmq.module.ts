@@ -2,46 +2,46 @@ import { Module, DynamicModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { RabbitMQModule as GolevelupRabbitMQModule } from '@golevelup/nestjs-rabbitmq';
 
-export const VALUATION_EXCHANGE = 'valuation_exchange';
+// Exchange from vector-api
+export const VECTOR_EVENTS_EXCHANGE = 'vector-events';
+// Exchange from api-property-aggregator
+export const AGGREGATOR_EVENTS_EXCHANGE = 'aggregator-events';
 
 export const QUEUES = {
-  // Geo sync queues
-  GEO_SYNC: 'valuation.geo.sync',
-  STREET_SYNC: 'valuation.street.sync',
-  TOPZONE_SYNC: 'valuation.topzone.sync',
-  COMPLEX_SYNC: 'valuation.complex.sync',
   // Vector property sync queues
   VECTOR_PROPERTY_SYNC: 'valuation.vector.property.sync',
   // Aggregator property sync queues
   AGGREGATOR_PROPERTY_SYNC: 'valuation.aggregator.property.sync',
+  // Geo sync queues (not yet implemented in vector-api)
+  GEO_SYNC: 'valuation.geo.sync',
+  STREET_SYNC: 'valuation.street.sync',
+  TOPZONE_SYNC: 'valuation.topzone.sync',
+  COMPLEX_SYNC: 'valuation.complex.sync',
 } as const;
 
 export const ROUTING_KEYS = {
-  // From vector-api: Geo events
-  GEO_CREATED: 'valuation.geo.created',
-  GEO_UPDATED: 'valuation.geo.updated',
-  GEO_DELETED: 'valuation.geo.deleted',
-  // From vector-api: Street events
-  STREET_CREATED: 'valuation.street.created',
-  STREET_UPDATED: 'valuation.street.updated',
-  STREET_DELETED: 'valuation.street.deleted',
-  // From vector-api: Topzone events
-  TOPZONE_CREATED: 'valuation.topzone.created',
-  TOPZONE_UPDATED: 'valuation.topzone.updated',
-  TOPZONE_DELETED: 'valuation.topzone.deleted',
-  // From vector-api: Apartment Complex events
-  COMPLEX_CREATED: 'valuation.complex.created',
-  COMPLEX_UPDATED: 'valuation.complex.updated',
-  COMPLEX_DELETED: 'valuation.complex.deleted',
-  // From vector-api: Customer Property events
-  VECTOR_PROPERTY_CREATED: 'valuation.property.created',
-  VECTOR_PROPERTY_UPDATED: 'valuation.property.updated',
-  VECTOR_PROPERTY_ARCHIVED: 'valuation.property.archived',
-  VECTOR_PROPERTY_UNARCHIVED: 'valuation.property.unarchived',
-  // From api-property-aggregator: Exported Property events
-  AGGREGATOR_PROPERTY_CREATED: 'valuation.aggregator.property.created',
-  AGGREGATOR_PROPERTY_UPDATED: 'valuation.aggregator.property.updated',
-  AGGREGATOR_PROPERTY_DELETED: 'valuation.aggregator.property.deleted',
+  // From vector-api: Customer Property events (exchange: vector-events)
+  VECTOR_PROPERTY_CREATED: 'customer-property.created',
+  VECTOR_PROPERTY_UPDATED: 'customer-property.updated',
+  VECTOR_PROPERTY_ARCHIVED: 'customer-property.archived',
+  VECTOR_PROPERTY_UNARCHIVED: 'customer-property.unarchived',
+  // From api-property-aggregator: Exported Property events (exchange: aggregator-events)
+  AGGREGATOR_PROPERTY_CREATED: 'exported-property.created',
+  AGGREGATOR_PROPERTY_UPDATED: 'exported-property.updated',
+  AGGREGATOR_PROPERTY_DELETED: 'exported-property.deleted',
+  // Geo events (not yet implemented in vector-api, kept for compatibility)
+  GEO_CREATED: 'geo.created',
+  GEO_UPDATED: 'geo.updated',
+  GEO_DELETED: 'geo.deleted',
+  STREET_CREATED: 'street.created',
+  STREET_UPDATED: 'street.updated',
+  STREET_DELETED: 'street.deleted',
+  TOPZONE_CREATED: 'topzone.created',
+  TOPZONE_UPDATED: 'topzone.updated',
+  TOPZONE_DELETED: 'topzone.deleted',
+  COMPLEX_CREATED: 'complex.created',
+  COMPLEX_UPDATED: 'complex.updated',
+  COMPLEX_DELETED: 'complex.deleted',
 } as const;
 
 @Module({})
@@ -69,7 +69,12 @@ export class RabbitMQModule {
             uri: configService.get<string>('RABBITMQ_URL', 'amqp://guest:guest@localhost:5672'),
             exchanges: [
               {
-                name: VALUATION_EXCHANGE,
+                name: VECTOR_EVENTS_EXCHANGE,
+                type: 'topic',
+                options: { durable: true },
+              },
+              {
+                name: AGGREGATOR_EVENTS_EXCHANGE,
                 type: 'topic',
                 options: { durable: true },
               },
