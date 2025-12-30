@@ -92,6 +92,8 @@ export class PropertySyncConsumer {
   })
   async handleAggregatorPropertyCreated(data: AggregatorPropertyEventDto): Promise<void | Nack> {
     this.logger.log(`Received exported-property.created event: ${data.id}`);
+    // Debug: log raw lat/lng to diagnose missing coordinates
+    this.logger.debug(`Raw message for ${data.id}: lat=${JSON.stringify(data.lat)}, lng=${JSON.stringify(data.lng)}, hasLat=${'lat' in data}, hasLng=${'lng' in data}`);
     try {
       await this.propertySyncService.handleAggregatorPropertyCreated(data);
     } catch (error) {
