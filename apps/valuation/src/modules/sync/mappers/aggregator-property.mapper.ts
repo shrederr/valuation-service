@@ -57,15 +57,22 @@ export class AggregatorPropertyMapper {
     let geoId = data.geoId || undefined;
     let streetId = data.streetId || undefined;
 
-    if (data.lng && data.lat) {
+    // Extract coordinates - handle Prisma Decimal objects from aggregator
+    const lng = this.extractNumber(data.lng);
+    const lat = this.extractNumber(data.lat);
+
+    this.logger.debug(`Property ${data.id} raw coords: lng=${data.lng} (type: ${typeof data.lng}), lat=${data.lat} (type: ${typeof data.lat})`);
+    this.logger.debug(`Property ${data.id} extracted coords: lng=${lng}, lat=${lat}`);
+
+    if (lng && lat) {
       // Build text for street matching from address/title
       const textForMatching = this.buildTextForMatching(data);
 
-      this.logger.debug(`Calling geoLookupService for property ${data.id}: lng=${data.lng}, lat=${data.lat}`);
+      this.logger.debug(`Calling geoLookupService for property ${data.id}: lng=${lng}, lat=${lat}`);
 
       geoResolution = await this.geoLookupService.resolveGeoForListingWithText(
-        data.lng,
-        data.lat,
+        lng,
+        lat,
         textForMatching,
         data.geoId,
       );
@@ -86,7 +93,7 @@ export class AggregatorPropertyMapper {
         );
       }
     } else {
-      this.logger.warn(`No coordinates for property ${data.id}: lng=${data.lng}, lat=${data.lat}`);
+      this.logger.warn(`No coordinates for property ${data.id}: extracted lng=${lng}, lat=${lat} (raw: ${JSON.stringify(data.lng)}, ${JSON.stringify(data.lat)})`);
     }
 
     // Map condition and houseType using platform-specific mappings
@@ -110,8 +117,8 @@ export class AggregatorPropertyMapper {
       houseNumber: data.houseNumber || undefined,
       apartmentNumber: this.extractNumber(attrs.apartmentNumber) ?? undefined,
       corps: (attrs.corps as string) || undefined,
-      lat: data.lat || undefined,
-      lng: data.lng || undefined,
+      lat: lat ?? undefined,
+      lng: lng ?? undefined,
       price: price || undefined,
       currency: data.currency || 'USD',
       pricePerMeter: pricePerMeter ?? undefined,
@@ -219,6 +226,18 @@ export class AggregatorPropertyMapper {
     if (typeof value === 'string') {
       const num = parseFloat(value);
       return isNaN(num) ? null : num;
+    }
+    // Handle Prisma Decimal objects (they have toNumber() method or can be converted via toString)
+    if (typeof value === 'object' && value !== null) {
+      // Prisma Decimal has toNumber() method
+      if ('toNumber' in value && typeof (value as any).toNumber === 'function') {
+        return (value as any).toNumber();
+      }
+      // Or try toString() and parse
+      if ('toString' in value) {
+        const num = parseFloat(value.toString());
+        return isNaN(num) ? null : num;
+      }
     }
     return null;
   }
