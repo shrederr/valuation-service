@@ -177,4 +177,58 @@ export class AppController {
       canCalculate: parseInt(canCalculate[0].count, 10),
     };
   }
+
+  @Get('admin/duplicates-check')
+  async checkDuplicates(): Promise<{
+    duplicateGroups: number;
+    extraRows: number;
+    samples: Array<{ source_type: string; source_id: number; count: number }>;
+  }> {
+    const dupes = await this.dataSource.query(`
+      SELECT source_type, source_id, COUNT(*) as count
+      FROM unified_listings
+      GROUP BY source_type, source_id
+      HAVING COUNT(*) > 1
+      ORDER BY count DESC
+      LIMIT 20
+    `);
+
+    const totalExtra = await this.dataSource.query(`
+      SELECT COALESCE(SUM(cnt - 1), 0) as extra_rows FROM (
+        SELECT COUNT(*) as cnt
+        FROM unified_listings
+        GROUP BY source_type, source_id
+        HAVING COUNT(*) > 1
+      ) sub
+    `);
+
+    return {
+      duplicateGroups: dupes.length,
+      extraRows: parseInt(totalExtra[0].extra_rows, 10),
+      samples: dupes.map((d: { source_type: string; source_id: string; count: string }) => ({
+        source_type: d.source_type,
+        source_id: parseInt(d.source_id, 10),
+        count: parseInt(d.count, 10),
+      })),
+    };
+  }
+
+  @Post('admin/remove-duplicates')
+  async removeDuplicates(): Promise<{ success: boolean; removed: number }> {
+    // Keep the oldest record (smallest id), delete newer duplicates
+    const result = await this.dataSource.query(`
+      DELETE FROM unified_listings
+      WHERE id IN (
+        SELECT id FROM (
+          SELECT id, ROW_NUMBER() OVER (
+            PARTITION BY source_type, source_id
+            ORDER BY created_at ASC, id ASC
+          ) as rn
+          FROM unified_listings
+        ) sub
+        WHERE rn > 1
+      )
+    `);
+    return { success: true, removed: result[1] || 0 };
+  }
 }
