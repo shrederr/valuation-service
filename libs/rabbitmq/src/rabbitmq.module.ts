@@ -67,6 +67,13 @@ export class RabbitMQModule {
           inject: [ConfigService],
           useFactory: (configService: ConfigService) => ({
             uri: configService.get<string>('RABBITMQ_URL', 'amqp://guest:guest@localhost:5672'),
+            deserializer: (message: Buffer) => {
+              try {
+                return JSON.parse(message.toString());
+              } catch {
+                return message.toString();
+              }
+            },
             exchanges: [
               {
                 name: VECTOR_EVENTS_EXCHANGE,
