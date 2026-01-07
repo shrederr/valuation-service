@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SourceType, DealType, RealtyType } from '@libs/common';
 import { UnifiedListing } from '@libs/database';
 import { VectorPropertyEventDto } from '../dto';
+import { mapConditionType, mapProject } from './attribute-values.map';
 
 @Injectable()
 export class VectorPropertyMapper {
@@ -42,8 +43,8 @@ export class VectorPropertyMapper {
       rooms: this.extractNumber(data.attributes?.rooms_count) ?? undefined,
       floor: this.extractNumber(data.attributes?.floor) ?? undefined,
       totalFloors: this.extractNumber(data.attributes?.floors_count) ?? undefined,
-      condition: (data.attributes?.condition_type as string) || undefined,
-      houseType: (data.attributes?.project as string) || undefined,
+      condition: mapConditionType(data.attributes?.condition_type as number) || undefined,
+      houseType: mapProject(data.attributes?.project as number) || undefined,
       planningType: (data.attributes?.layout_features as string) || undefined,
       heatingType: (data.attributes?.heating_type as string) || undefined,
       attributes: data.attributes || undefined,
