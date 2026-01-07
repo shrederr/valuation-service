@@ -113,6 +113,19 @@ export class PropertySyncService {
       this.logger.debug(
         `Aggregator property ${data.id} incoming data: lat=${data.lat}, lng=${data.lng}, geoId=${data.geoId}, streetId=${data.streetId}`,
       );
+
+      // Check if already exists - treat as update
+      const existing = await this.listingRepository.findOne({
+        where: {
+          sourceType: SourceType.AGGREGATOR,
+          sourceId: data.id,
+        },
+      });
+
+      if (existing) {
+        return this.handleAggregatorPropertyUpdated(data);
+      }
+
       const result = await this.aggregatorMapper.mapToUnifiedListing(data);
       const listing = this.listingRepository.create(result.listing);
 

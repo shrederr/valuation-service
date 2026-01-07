@@ -29,6 +29,9 @@ export class GeoFallbackStrategy {
   // Радиус для поиска "в квартале" в метрах
   private readonly BLOCK_RADIUS_METERS = 200;
 
+
+  // Maximum results per search level to avoid loading too many records
+  private readonly MAX_RESULTS_PER_LEVEL = 50;
   public constructor(
     @InjectRepository(UnifiedListing)
     private readonly listingRepository: Repository<UnifiedListing>,
@@ -95,6 +98,7 @@ export class GeoFallbackStrategy {
         .andWhere('l.isActive = true')
         .andWhere('l.dealType = :dealType', { dealType: subject.dealType })
         .andWhere('l.realtyType = :realtyType', { realtyType: subject.realtyType })
+        .take(this.MAX_RESULTS_PER_LEVEL)
         .getMany();
 
       if (results.length > 0) {
@@ -115,6 +119,7 @@ export class GeoFallbackStrategy {
         .andWhere('l.isActive = true')
         .andWhere('l.dealType = :dealType', { dealType: subject.dealType })
         .andWhere('l.realtyType = :realtyType', { realtyType: subject.realtyType })
+        .take(this.MAX_RESULTS_PER_LEVEL)
         .getMany();
 
       this.logger.debug(`Found ${results.length} analogs in same building (street + house)`);
@@ -154,7 +159,8 @@ export class GeoFallbackStrategy {
       .andWhere('l.isActive = true')
       .andWhere('l.dealType = :dealType', { dealType: subject.dealType })
       .andWhere('l.realtyType = :realtyType', { realtyType: subject.realtyType })
-      .getMany();
+        .take(this.MAX_RESULTS_PER_LEVEL)
+        .getMany();
 
     this.logger.debug(`Found ${results.length} analogs within ${this.BLOCK_RADIUS_METERS}m radius`);
     return results;
@@ -177,7 +183,8 @@ export class GeoFallbackStrategy {
       .andWhere('l.isActive = true')
       .andWhere('l.dealType = :dealType', { dealType: subject.dealType })
       .andWhere('l.realtyType = :realtyType', { realtyType: subject.realtyType })
-      .getMany();
+        .take(this.MAX_RESULTS_PER_LEVEL)
+        .getMany();
 
     this.logger.debug(`Found ${results.length} analogs on same street`);
     return results;
@@ -200,7 +207,8 @@ export class GeoFallbackStrategy {
       .andWhere('l.isActive = true')
       .andWhere('l.dealType = :dealType', { dealType: subject.dealType })
       .andWhere('l.realtyType = :realtyType', { realtyType: subject.realtyType })
-      .getMany();
+        .take(this.MAX_RESULTS_PER_LEVEL)
+        .getMany();
 
     this.logger.debug(`Found ${results.length} analogs in same topzone`);
     return results;
@@ -223,7 +231,8 @@ export class GeoFallbackStrategy {
       .andWhere('l.isActive = true')
       .andWhere('l.dealType = :dealType', { dealType: subject.dealType })
       .andWhere('l.realtyType = :realtyType', { realtyType: subject.realtyType })
-      .getMany();
+        .take(this.MAX_RESULTS_PER_LEVEL)
+        .getMany();
 
     this.logger.debug(`Found ${results.length} analogs in same district`);
     return results;
@@ -259,7 +268,8 @@ export class GeoFallbackStrategy {
       .andWhere('l.isActive = true')
       .andWhere('l.dealType = :dealType', { dealType: subject.dealType })
       .andWhere('l.realtyType = :realtyType', { realtyType: subject.realtyType })
-      .getMany();
+        .take(this.MAX_RESULTS_PER_LEVEL)
+        .getMany();
 
     this.logger.debug(`Found ${results.length} analogs in neighbor districts`);
     return results;
@@ -306,7 +316,8 @@ export class GeoFallbackStrategy {
       .andWhere('l.isActive = true')
       .andWhere('l.dealType = :dealType', { dealType: subject.dealType })
       .andWhere('l.realtyType = :realtyType', { realtyType: subject.realtyType })
-      .getMany();
+        .take(this.MAX_RESULTS_PER_LEVEL)
+        .getMany();
 
     this.logger.debug(`Found ${results.length} analogs in city`);
     return results;
