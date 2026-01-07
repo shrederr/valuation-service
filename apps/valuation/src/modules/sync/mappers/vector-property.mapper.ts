@@ -43,7 +43,7 @@ export class VectorPropertyMapper {
       floor: this.extractNumber(data.attributes?.floor) ?? undefined,
       totalFloors: this.extractNumber(data.attributes?.floors_count) ?? undefined,
       condition: (data.attributes?.general_condition as string) || undefined,
-      houseType: (data.attributes?.housing_material as string) || undefined,
+      houseType: (data.attributes?.project as string) || undefined,
       planningType: (data.attributes?.layout_features as string) || undefined,
       heatingType: (data.attributes?.heating_type as string) || undefined,
       attributes: data.attributes || undefined,

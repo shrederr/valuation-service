@@ -145,43 +145,21 @@ async function main() {
       process.exit(1);
     }
 
-    // Find all geo_ids within Odessa CITY using Nested Set (lft/rgt)
-    // In aggregator: geo_id=2 is "Одеса" (city) - we sync only the city and its districts
-    const odessaGeoIds = await aggregatorDataSource.query(`
-      SELECT child.id FROM geo child
-      INNER JOIN geo parent ON child.lft >= parent.lft AND child.rgt <= parent.rgt
-      WHERE parent.id = 2 AND parent.type = 'city'
+    // Get count of ALL active properties (no city filter)
+    const countResult = await aggregatorDataSource.query(`
+      SELECT COUNT(*) as count FROM ${tableName}
+      WHERE is_active = true
     `);
-    const geoIdList = odessaGeoIds.map((g: { id: number }) => g.id);
-    logger.log(`Found ${geoIdList.length} geo_ids within Odessa city`);
-
-    // Get count of properties - either by geo_id filter or all active
-    const countResult = geoIdList.length > 0
-      ? await aggregatorDataSource.query(`
-          SELECT COUNT(*) as count FROM ${tableName}
-          WHERE is_active = true AND geo_id = ANY($1)
-        `, [geoIdList])
-      : await aggregatorDataSource.query(`
-          SELECT COUNT(*) as count FROM ${tableName}
-          WHERE is_active = true
-        `);
     const totalCount = parseInt(countResult[0].count, 10);
     logger.log(`Total properties to sync: ${totalCount}`);
 
-    // Fetch properties - if we found Odessa geo_ids, filter by them
-    const properties = geoIdList.length > 0
-      ? await aggregatorDataSource.query<AggregatorProperty[]>(`
-          SELECT * FROM ${tableName}
-          WHERE is_active = true AND geo_id = ANY($1)
-          ORDER BY id
-          LIMIT $2 OFFSET $3
-        `, [geoIdList, limit, offset])
-      : await aggregatorDataSource.query<AggregatorProperty[]>(`
-          SELECT * FROM ${tableName}
-          WHERE is_active = true
-          ORDER BY id
-          LIMIT $1 OFFSET $2
-        `, [limit, offset]);
+    // Fetch ALL active properties
+    const properties = await aggregatorDataSource.query<AggregatorProperty[]>(`
+      SELECT * FROM ${tableName}
+      WHERE is_active = true
+      ORDER BY id
+      LIMIT $1 OFFSET $2
+    `, [limit, offset]);
 
     logger.log(`Fetched ${properties.length} properties`);
 

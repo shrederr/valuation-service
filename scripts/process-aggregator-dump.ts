@@ -769,21 +769,13 @@ async function main() {
     process.exit(1);
   }
 
-  // Odessa bounding box (approximate)
-  const ODESSA_LAT_MIN = 46.3;
-  const ODESSA_LAT_MAX = 46.7;
-  const ODESSA_LNG_MIN = 30.5;
-  const ODESSA_LNG_MAX = 31.0;
-
-  // Get total count (only Odessa region)
+  // Get total count (ALL records with valid coordinates)
   const countResult = await dataSource.query(`
     SELECT COUNT(*) as count FROM aggregator_import
     WHERE lat != '' AND lng != ''
-      AND lat::numeric BETWEEN $1 AND $2
-      AND lng::numeric BETWEEN $3 AND $4
-  `, [ODESSA_LAT_MIN, ODESSA_LAT_MAX, ODESSA_LNG_MIN, ODESSA_LNG_MAX]);
+  `);
   const totalCount = parseInt(countResult[0].count, 10);
-  logger.log(`Total Odessa region records: ${totalCount}`);
+  logger.log(`Total records with coordinates: ${totalCount}`);
 
   let totalSynced = 0;
   let totalSkipped = 0;
@@ -802,15 +794,13 @@ async function main() {
         break;
       }
 
-      // Fetch batch from import table (only Odessa region)
+      // Fetch batch from import table (ALL records with coordinates)
       const properties = await dataSource.query<ImportedProperty[]>(`
         SELECT * FROM aggregator_import
         WHERE lat != '' AND lng != ''
-          AND lat::numeric BETWEEN $3 AND $4
-          AND lng::numeric BETWEEN $5 AND $6
         ORDER BY id
         LIMIT $1 OFFSET $2
-      `, [batchSize, currentOffset, ODESSA_LAT_MIN, ODESSA_LAT_MAX, ODESSA_LNG_MIN, ODESSA_LNG_MAX]);
+      `, [batchSize, currentOffset]);
 
       if (properties.length === 0) {
         logger.log('No more records to process');
