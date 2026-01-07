@@ -1,8 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { SourceType, DealType, RealtyType } from '@libs/common';
+import { SourceType, DealType, RealtyType, CONDITION_TYPE_MAP, PROJECT_TYPE_MAP } from '@libs/common';
 import { UnifiedListing } from '@libs/database';
 import { VectorPropertyEventDto } from '../dto';
-import { mapConditionType, mapProject } from './attribute-values.map';
 
 @Injectable()
 export class VectorPropertyMapper {
@@ -43,8 +42,8 @@ export class VectorPropertyMapper {
       rooms: this.extractNumber(data.attributes?.rooms_count) ?? undefined,
       floor: this.extractNumber(data.attributes?.floor) ?? undefined,
       totalFloors: this.extractNumber(data.attributes?.floors_count) ?? undefined,
-      condition: mapConditionType(data.attributes?.condition_type as number) || undefined,
-      houseType: mapProject(data.attributes?.project as number) || undefined,
+      condition: this.mapConditionType(data.attributes?.condition_type) || undefined,
+      houseType: this.mapProjectType(data.attributes?.project) || undefined,
       planningType: (data.attributes?.layout_features as string) || undefined,
       heatingType: (data.attributes?.heating_type as string) || undefined,
       attributes: data.attributes || undefined,
@@ -100,5 +99,27 @@ export class VectorPropertyMapper {
       return isNaN(num) ? null : num;
     }
     return null;
+  }
+
+  private mapConditionType(value: unknown): string | undefined {
+    const id = this.extractInteger(value);
+    if (id === undefined) return undefined;
+    return CONDITION_TYPE_MAP[id];
+  }
+
+  private mapProjectType(value: unknown): string | undefined {
+    const id = this.extractInteger(value);
+    if (id === undefined) return undefined;
+    return PROJECT_TYPE_MAP[id];
+  }
+
+  private extractInteger(value: unknown): number | undefined {
+    if (value === null || value === undefined) return undefined;
+    if (typeof value === 'number') return isNaN(value) ? undefined : Math.floor(value);
+    if (typeof value === 'string') {
+      const num = parseInt(value, 10);
+      return isNaN(num) ? undefined : num;
+    }
+    return undefined;
   }
 }
