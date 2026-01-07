@@ -33,7 +33,22 @@ export class ListingsController {
       id: listing.id,
       sourceType: listing.sourceType,
       sourceId: listing.sourceId,
+      sourceGlobalId: listing.sourceGlobalId,
       externalUrl: listing.externalUrl,
+      dealType: listing.dealType,
+      realtyType: listing.realtyType,
+      geoId: listing.geoId,
+      streetId: listing.streetId,
+      price: listing.price,
+      totalArea: listing.totalArea,
+      livingArea: listing.livingArea,
+      rooms: listing.rooms,
+      floor: listing.floor,
+      totalFloors: listing.totalFloors,
+      condition: listing.condition,
+      houseType: listing.houseType,
+      isActive: listing.isActive,
+      syncedAt: listing.syncedAt,
     };
   }
 }
