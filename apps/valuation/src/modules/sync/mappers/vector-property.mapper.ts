@@ -12,7 +12,8 @@ export class VectorPropertyMapper {
     const dealType = this.mapDealType(data.dealType);
     const realtyType = this.mapRealtyType(data.realtyType);
     const price = this.extractPrice(data.attributes);
-    const totalArea = this.extractNumber(data.attributes?.totalArea);
+    // vector-api uses 'square_total' for total area
+    const totalArea = this.extractNumber(data.attributes?.square_total);
 
     return {
       sourceType: SourceType.VECTOR,
@@ -34,16 +35,17 @@ export class VectorPropertyMapper {
       currency: (data.attributes?.currency as string) || 'USD',
       pricePerMeter: totalArea && price ? price / totalArea : undefined,
       totalArea: totalArea ?? undefined,
-      livingArea: this.extractNumber(data.attributes?.livingArea) ?? undefined,
-      kitchenArea: this.extractNumber(data.attributes?.kitchenArea) ?? undefined,
-      landArea: this.extractNumber(data.attributes?.landArea) ?? undefined,
-      rooms: this.extractNumber(data.attributes?.rooms) ?? undefined,
+      // vector-api attribute keys mapping:
+      livingArea: this.extractNumber(data.attributes?.square_living) ?? undefined,
+      kitchenArea: this.extractNumber(data.attributes?.square_kitchen) ?? undefined,
+      landArea: this.extractNumber(data.attributes?.square_land_total) ?? undefined,
+      rooms: this.extractNumber(data.attributes?.rooms_count) ?? undefined,
       floor: this.extractNumber(data.attributes?.floor) ?? undefined,
-      totalFloors: this.extractNumber(data.attributes?.totalFloors) ?? undefined,
-      condition: (data.attributes?.condition as string) || undefined,
-      houseType: (data.attributes?.houseType as string) || undefined,
-      planningType: (data.attributes?.planningType as string) || undefined,
-      heatingType: (data.attributes?.heatingType as string) || undefined,
+      totalFloors: this.extractNumber(data.attributes?.floors_count) ?? undefined,
+      condition: (data.attributes?.general_condition as string) || undefined,
+      houseType: (data.attributes?.build_type as string) || undefined,
+      planningType: (data.attributes?.layout_features as string) || undefined,
+      heatingType: (data.attributes?.heating_type as string) || undefined,
       attributes: data.attributes || undefined,
       cadastralNumber: data.cadastralNumber ? { number: data.cadastralNumber } : undefined,
       isActive: true,
