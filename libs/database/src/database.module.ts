@@ -20,6 +20,8 @@ const repositories = [GeoRepository, StreetRepository];
           }
         }
 
+        const isDevelopment = configService.get<string>('NODE_ENV') === 'development';
+
         return {
           type: 'postgres',
           host: configService.getOrThrow<string>('DB_HOST'),
@@ -28,7 +30,9 @@ const repositories = [GeoRepository, StreetRepository];
           password: configService.getOrThrow<string>('DB_PASSWORD'),
           database: configService.getOrThrow<string>('DB_DATABASE'),
           entities,
-          synchronize: configService.get<string>('NODE_ENV') === 'development',
+          synchronize: isDevelopment,
+          migrationsRun: !isDevelopment, // Run migrations automatically in production
+          migrations: [process.cwd() + '/dist/db/migrations/*.js'],
           logging: configService.get<string>('DB_LOGGING') === 'true',
           ssl: configService.get<string>('DB_SSL') === 'true' ? { rejectUnauthorized: false } : false,
         };

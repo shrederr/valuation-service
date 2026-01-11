@@ -8,6 +8,9 @@ RUN yarn install --frozen-lockfile
 COPY . .
 RUN yarn build
 
+# Compile migrations separately (webpack bundles app, but migrations need to be separate)
+RUN npx tsc db/migrations/*.ts db/datasource.ts --outDir dist/db --esModuleInterop --module commonjs --target ES2020 --skipLibCheck
+
 FROM node:20-alpine AS production
 
 WORKDIR /app
