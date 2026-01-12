@@ -54,8 +54,8 @@ export class AggregatorPropertyMapper {
 
     // Resolve geo and street by coordinates + text
     let geoResolution: GeoResolutionResult | null = null;
-    let geoId = data.geoId || undefined;
-    let streetId = data.streetId || undefined;
+    let geoId: number | undefined = undefined; // Резолвим по координатам
+    let streetId: number | undefined = undefined; // Резолвим по координатам
 
     if (data.lng && data.lat) {
       // Build text for street matching from address/title
@@ -99,8 +99,8 @@ export class AggregatorPropertyMapper {
       realtySubtype: undefined,
       geoId: geoId || undefined,
       streetId: streetId || undefined,
-      topzoneId: data.topzoneId || undefined,
-      complexId: data.complexId || undefined,
+      topzoneId: undefined, // Aggregator topzoneId не совпадает с нашей БД
+      complexId: undefined, // Aggregator complexId не совпадает с нашей БД
       houseNumber: data.houseNumber || undefined,
       apartmentNumber: this.extractNumber(attrs.apartmentNumber) ?? undefined,
       corps: (attrs.corps as string) || undefined,
