@@ -127,7 +127,8 @@ export class PropertySyncService {
       }
 
       const result = await this.aggregatorMapper.mapToUnifiedListing(data);
-      const listing = this.listingRepository.create(result.listing);
+      const { geo, street, topzone, complex, topzoneId, complexId, ...listingData } = result.listing;
+      const listing = this.listingRepository.create(listingData);
 
       await this.listingRepository.save(listing);
       this.logger.log(
