@@ -51,7 +51,7 @@ export class PropertySyncService {
       if (existing) {
         const mapped = this.vectorMapper.mapToUnifiedListing(data);
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { geo, street, topzone, complex, ...updateData } = mapped;
+        const { geo, street, topzone, complex, topzoneId, complexId, ...updateData } = mapped;
         const merged = this.listingRepository.merge(existing, updateData);
         await this.listingRepository.save(merged);
         this.logger.log(`Vector property updated: ${data.id}`);
@@ -153,7 +153,7 @@ export class PropertySyncService {
       if (existing) {
         const result = await this.aggregatorMapper.mapToUnifiedListing(data);
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { geo, street, topzone, complex, ...updateData } = result.listing;
+        const { geo, street, topzone, complex, topzoneId, complexId, ...updateData } = result.listing;
         const merged = this.listingRepository.merge(existing, updateData);
         await this.listingRepository.save(merged);
         this.logger.log(
