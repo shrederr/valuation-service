@@ -404,8 +404,10 @@ function displayFairPrice(fairPrice, askingPrice, analogs) {
   renderPriceHistogram(analogs, askingPrice);
 }
 
-function renderPriceHistogram(analogs, askingPrice) {
-  if (!analogs || analogs.length === 0) {
+function renderPriceHistogram(analogsData, askingPrice) {
+  const analogs = analogsData?.analogs || analogsData || [];
+
+  if (!Array.isArray(analogs) || analogs.length === 0) {
     elements.priceHistogram.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:2rem;">Немає даних</div>';
     elements.histogramLabels.innerHTML = '';
     return;
