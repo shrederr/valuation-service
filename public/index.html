@@ -108,36 +108,52 @@
       <!-- Fair Price -->
       <div class="card fair-price-card">
         <h2>Справедлива ціна</h2>
-        <div class="fair-price-main">
-          <div class="price-stats">
-            <div class="stat-item">
-              <div class="stat-label">Медіана</div>
-              <div class="stat-value" id="medianPrice">-</div>
+        <div class="fair-price-layout">
+          <!-- Left side: stats + meter -->
+          <div class="fair-price-left">
+            <div class="price-stats">
+              <div class="stat-item">
+                <div class="stat-label">Медіана</div>
+                <div class="stat-value" id="medianPrice">-</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-label">Середня</div>
+                <div class="stat-value" id="averagePrice">-</div>
+              </div>
+              <div class="stat-item range">
+                <div class="stat-label">Діапазон</div>
+                <div class="stat-value" id="priceRange">-</div>
+              </div>
             </div>
-            <div class="stat-item">
-              <div class="stat-label">Середня</div>
-              <div class="stat-value" id="averagePrice">-</div>
+
+            <div class="price-meter">
+              <div class="meter-bar">
+                <div class="meter-range" id="meterRange"></div>
+                <div class="meter-marker" id="meterMarker"></div>
+              </div>
+              <div class="meter-labels">
+                <span id="meterMin">-</span>
+                <span id="meterMax">-</span>
+              </div>
             </div>
-            <div class="stat-item range">
-              <div class="stat-label">Діапазон</div>
-              <div class="stat-value" id="priceRange">-</div>
+
+            <div class="verdict-box" id="verdictBox">
+              <span class="verdict-icon" id="verdictIcon"></span>
+              <span class="verdict-text" id="verdictText">-</span>
             </div>
           </div>
 
-          <div class="price-meter">
-            <div class="meter-bar">
-              <div class="meter-range" id="meterRange"></div>
-              <div class="meter-marker" id="meterMarker"></div>
+          <!-- Right side: histogram -->
+          <div class="fair-price-right">
+            <div class="price-histogram">
+              <div class="histogram-title">Розподіл цін аналогів</div>
+              <div class="histogram-chart" id="priceHistogram">
+                <!-- Bars will be inserted here -->
+              </div>
+              <div class="histogram-labels" id="histogramLabels">
+                <!-- Labels will be inserted here -->
+              </div>
             </div>
-            <div class="meter-labels">
-              <span id="meterMin">-</span>
-              <span id="meterMax">-</span>
-            </div>
-          </div>
-
-          <div class="verdict-box" id="verdictBox">
-            <span class="verdict-icon" id="verdictIcon"></span>
-            <span class="verdict-text" id="verdictText">-</span>
           </div>
         </div>
 

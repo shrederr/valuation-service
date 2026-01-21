@@ -49,6 +49,8 @@ const elements = {
   ppmObject: document.getElementById('ppmObject'),
   ppmMarket: document.getElementById('ppmMarket'),
   ppmDiff: document.getElementById('ppmDiff'),
+  priceHistogram: document.getElementById('priceHistogram'),
+  histogramLabels: document.getElementById('histogramLabels'),
 
   // Analogs
   analogsCount: document.getElementById('analogsCount'),
@@ -232,7 +234,7 @@ function displayResults(data) {
   displayLiquidity(data.liquidity);
 
   // Fair Price
-  displayFairPrice(data.fairPrice, data.property?.askingPrice);
+  displayFairPrice(data.fairPrice, data.property?.askingPrice, data.analogs);
 
   // Analogs
   displayAnalogs(data.analogs);
@@ -339,7 +341,7 @@ function displayRecommendations(recommendations) {
   `;
 }
 
-function displayFairPrice(fairPrice, askingPrice) {
+function displayFairPrice(fairPrice, askingPrice, analogs) {
   if (!fairPrice) return;
 
   // Stats
@@ -397,6 +399,79 @@ function displayFairPrice(fairPrice, askingPrice) {
     elements.ppmDiff.textContent = '-';
     elements.ppmDiff.classList.remove('positive', 'negative');
   }
+
+  // Price Histogram
+  renderPriceHistogram(analogs, askingPrice);
+}
+
+function renderPriceHistogram(analogs, askingPrice) {
+  if (!analogs || analogs.length === 0) {
+    elements.priceHistogram.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:2rem;">Немає даних</div>';
+    elements.histogramLabels.innerHTML = '';
+    return;
+  }
+
+  // Get prices from analogs
+  const prices = analogs.map(a => a.price).filter(p => p && p > 0).sort((a, b) => a - b);
+  if (prices.length === 0) {
+    elements.priceHistogram.innerHTML = '<div style="text-align:center;color:var(--gray-400);padding:2rem;">Немає даних</div>';
+    elements.histogramLabels.innerHTML = '';
+    return;
+  }
+
+  // Calculate histogram bins
+  const minPrice = prices[0];
+  const maxPrice = prices[prices.length - 1];
+  const numBins = Math.min(12, Math.max(5, Math.ceil(prices.length / 2)));
+  const binWidth = (maxPrice - minPrice) / numBins;
+
+  // Create bins
+  const bins = [];
+  for (let i = 0; i < numBins; i++) {
+    bins.push({
+      min: minPrice + i * binWidth,
+      max: minPrice + (i + 1) * binWidth,
+      count: 0
+    });
+  }
+
+  // Fill bins
+  prices.forEach(price => {
+    const binIndex = Math.min(numBins - 1, Math.floor((price - minPrice) / binWidth));
+    bins[binIndex].count++;
+  });
+
+  // Find max count for scaling
+  const maxCount = Math.max(...bins.map(b => b.count));
+
+  // Find which bin contains the asking price
+  let askingBinIndex = -1;
+  if (askingPrice) {
+    askingBinIndex = Math.min(numBins - 1, Math.max(0, Math.floor((askingPrice - minPrice) / binWidth)));
+  }
+
+  // Render bars
+  elements.priceHistogram.innerHTML = bins.map((bin, i) => {
+    const height = maxCount > 0 ? (bin.count / maxCount) * 100 : 0;
+    const hue = 45 - (i / (numBins - 1)) * 30; // Yellow (45) to Orange (15)
+    const isHighlight = i === askingBinIndex;
+    const tooltip = `$${formatPriceShort(bin.min)} - $${formatPriceShort(bin.max)}: ${bin.count} об'єктів`;
+    return `<div class="histogram-bar ${isHighlight ? 'highlight' : ''}"
+                 style="height: ${Math.max(height, 2)}%; background: hsl(${hue}, 90%, 55%);"
+                 data-tooltip="${tooltip}"></div>`;
+  }).join('');
+
+  // Render labels
+  elements.histogramLabels.innerHTML = `
+    <span>$${formatPriceShort(minPrice)}</span>
+    <span>$${formatPriceShort(maxPrice)}</span>
+  `;
+}
+
+function formatPriceShort(price) {
+  if (price >= 1000000) return (price / 1000000).toFixed(1) + 'M';
+  if (price >= 1000) return Math.round(price / 1000) + 'k';
+  return price.toString();
 }
 
 function displayAnalogs(analogs) {
