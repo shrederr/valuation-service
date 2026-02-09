@@ -25,10 +25,12 @@
     "migration:revert": "npm run typeorm -- migration:revert -d ./db/datasource.ts",
     "parse-geo-osm": "ts-node -r tsconfig-paths/register ./scripts/parse-geo-osm.ts",
     "parse-streets-osm": "ts-node -r tsconfig-paths/register ./scripts/parse-streets-osm.ts",
+    "parse-streets-fast": "ts-node -r tsconfig-paths/register ./scripts/parse-streets-osm-fast.ts",
     "sync-from-aggregator": "ts-node -r tsconfig-paths/register ./scripts/sync-from-aggregator-db.ts",
     "import-aggregator-csv": "ts-node -r tsconfig-paths/register ./scripts/import-aggregator-csv.ts",
     "process-aggregator-dump": "ts-node -r tsconfig-paths/register ./scripts/process-aggregator-dump.ts",
-    "import-polygons": "ts-node -r tsconfig-paths/register ./scripts/import-polygons-osm.ts"
+    "import-polygons": "ts-node -r tsconfig-paths/register ./scripts/import-polygons-osm.ts",
+    "resolve-geo-batch": "ts-node -r tsconfig-paths/register ./scripts/resolve-geo-batch.ts"
   },
   "dependencies": {
     "@golevelup/nestjs-rabbitmq": "^5.5.0",
@@ -43,11 +45,15 @@
     "axios": "^1.13.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
+    "iconv-lite": "^0.7.2",
+    "openai": "^6.16.0",
     "pg": "^8.13.1",
+    "pg-copy-streams": "^7.0.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "typeorm": "^0.3.20",
-    "vector-shared": "^1.1.466"
+    "vector-shared": "^1.1.466",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

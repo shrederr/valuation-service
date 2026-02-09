@@ -16,6 +16,7 @@ import { FormatCriterion } from './criteria/format.criterion';
 import { FloorCriterion } from './criteria/floor.criterion';
 import { HouseTypeCriterion } from './criteria/house-type.criterion';
 import { ExposureTimeCriterion } from './criteria/exposure-time.criterion';
+import { InfrastructureCriterion } from './criteria/infrastructure.criterion';
 import { CriterionResult, CriterionContext, MEDIAN_DAYS_TO_SELL } from './criteria/base.criterion';
 
 export interface LiquidityOptions {
@@ -41,6 +42,7 @@ export class LiquidityService {
     private readonly floorCriterion: FloorCriterion,
     private readonly houseTypeCriterion: HouseTypeCriterion,
     private readonly exposureTimeCriterion: ExposureTimeCriterion,
+    private readonly infrastructureCriterion: InfrastructureCriterion,
   ) {}
 
   public async calculateLiquidity(options: LiquidityOptions): Promise<LiquidityDto> {
@@ -74,6 +76,7 @@ export class LiquidityService {
       this.formatCriterion.evaluate(context),
       this.floorCriterion.evaluate(context),
       this.houseTypeCriterion.evaluate(context),
+      this.infrastructureCriterion.evaluate(context),
     ];
 
     const totalWeight = criteriaResults.reduce((sum, c) => sum + c.weight, 0);
@@ -152,6 +155,9 @@ export class LiquidityService {
             break;
           case 'floor':
             recommendations.push('Зверніть увагу на особливості поверху в описі');
+            break;
+          case 'infrastructure':
+            recommendations.push('Об\'єкт далеко від інфраструктури - підкресліть інші переваги локації');
             break;
         }
       }

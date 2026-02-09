@@ -9,12 +9,13 @@ export interface ScoredAnalog {
 @Injectable()
 export class AnalogScorerService {
   private readonly WEIGHTS = {
-    area: 0.3,
-    rooms: 0.2,
-    floor: 0.15,
-    condition: 0.15,
-    houseType: 0.1,
+    area: 0.25,
+    rooms: 0.18,
+    floor: 0.12,
+    condition: 0.12,
+    houseType: 0.08,
     location: 0.1,
+    infrastructure: 0.15,
   };
 
   public scoreAnalogs(subject: UnifiedListing, candidates: UnifiedListing[]): ScoredAnalog[] {
@@ -62,6 +63,12 @@ export class AnalogScorerService {
     if (locationScore !== null) {
       score += locationScore * this.WEIGHTS.location;
       totalWeight += this.WEIGHTS.location;
+    }
+
+    const infrastructureScore = this.scoreInfrastructure(subject, candidate);
+    if (infrastructureScore !== null) {
+      score += infrastructureScore * this.WEIGHTS.infrastructure;
+      totalWeight += this.WEIGHTS.infrastructure;
     }
 
     if (totalWeight === 0) {
@@ -222,5 +229,124 @@ export class AnalogScorerService {
     }
 
     return 0.3;
+  }
+
+  /**
+   * Score infrastructure similarity between subject and candidate.
+   * Compares distances to public transport, schools, hospitals, and supermarkets.
+   * Higher scores when both have similar infrastructure access.
+   */
+  private scoreInfrastructure(subject: UnifiedListing, candidate: UnifiedListing): number | null {
+    // Check if either has infrastructure data
+    const subjectHasData = subject.nearestPublicTransport || subject.nearestSchool ||
+                           subject.nearestHospital || subject.nearestSupermarket;
+    const candidateHasData = candidate.nearestPublicTransport || candidate.nearestSchool ||
+                             candidate.nearestHospital || candidate.nearestSupermarket;
+
+    if (!subjectHasData && !candidateHasData) {
+      return null;
+    }
+
+    // If only one has data, give partial score
+    if (!subjectHasData || !candidateHasData) {
+      return 0.5;
+    }
+
+    let totalScore = 0;
+    let count = 0;
+
+    // Score public transport (weight: 40%)
+    const transportScore = this.scoreDistanceCategory(
+      subject.nearestPublicTransport,
+      candidate.nearestPublicTransport,
+    );
+    if (transportScore !== null) {
+      totalScore += transportScore * 0.4;
+      count += 0.4;
+    }
+
+    // Score school proximity (weight: 25%)
+    const schoolScore = this.scoreDistanceCategory(
+      subject.nearestSchool,
+      candidate.nearestSchool,
+    );
+    if (schoolScore !== null) {
+      totalScore += schoolScore * 0.25;
+      count += 0.25;
+    }
+
+    // Score supermarket proximity (weight: 20%)
+    const supermarketScore = this.scoreDistanceCategory(
+      subject.nearestSupermarket,
+      candidate.nearestSupermarket,
+    );
+    if (supermarketScore !== null) {
+      totalScore += supermarketScore * 0.2;
+      count += 0.2;
+    }
+
+    // Score hospital proximity (weight: 15%)
+    const hospitalScore = this.scoreDistanceCategory(
+      subject.nearestHospital,
+      candidate.nearestHospital,
+    );
+    if (hospitalScore !== null) {
+      totalScore += hospitalScore * 0.15;
+      count += 0.15;
+    }
+
+    if (count === 0) {
+      return null;
+    }
+
+    return totalScore / count;
+  }
+
+  /**
+   * Compare two distances and return a similarity score.
+   * Both distances are categorized into bands, and we score based on same/similar band.
+   */
+  private scoreDistanceCategory(
+    subjectDist: number | undefined | null,
+    candidateDist: number | undefined | null,
+  ): number | null {
+    if (subjectDist == null || candidateDist == null) {
+      return null;
+    }
+
+    const subjectCategory = this.getDistanceCategory(subjectDist);
+    const candidateCategory = this.getDistanceCategory(candidateDist);
+
+    // Same category = perfect match
+    if (subjectCategory === candidateCategory) {
+      return 1;
+    }
+
+    // Adjacent category = good match
+    const diff = Math.abs(subjectCategory - candidateCategory);
+    if (diff === 1) {
+      return 0.7;
+    }
+    if (diff === 2) {
+      return 0.4;
+    }
+
+    return 0.2;
+  }
+
+  /**
+   * Categorize distance into bands:
+   * 1 = Very close (0-300m)
+   * 2 = Close (300-500m)
+   * 3 = Walking distance (500-800m)
+   * 4 = Medium (800-1200m)
+   * 5 = Far (>1200m)
+   */
+  private getDistanceCategory(distance: number): number {
+    if (distance <= 300) return 1;
+    if (distance <= 500) return 2;
+    if (distance <= 800) return 3;
+    if (distance <= 1200) return 4;
+    return 5;
   }
 }

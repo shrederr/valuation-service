@@ -40,6 +40,19 @@ export class AnalogDto {
 
   @ApiPropertyOptional({ description: 'External URL' })
   public externalUrl?: string;
+
+  // Infrastructure distances (in meters)
+  @ApiPropertyOptional({ description: 'Distance to nearest public transport (meters)' })
+  public nearestPublicTransport?: number;
+
+  @ApiPropertyOptional({ description: 'Distance to nearest school/kindergarten (meters)' })
+  public nearestSchool?: number;
+
+  @ApiPropertyOptional({ description: 'Distance to nearest supermarket (meters)' })
+  public nearestSupermarket?: number;
+
+  @ApiPropertyOptional({ description: 'Distance to nearest hospital/clinic (meters)' })
+  public nearestHospital?: number;
 }
 
 export class AnalogSearchResultDto {

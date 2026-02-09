@@ -170,6 +170,35 @@ export class UnifiedListing {
   @Column({ name: 'synced_at', type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   public syncedAt: Date;
 
+  // === Infrastructure (distances in meters) ===
+  @Column({ name: 'nearest_school', type: 'integer', nullable: true })
+  public nearestSchool?: number;
+
+  @Column({ name: 'nearest_hospital', type: 'integer', nullable: true })
+  public nearestHospital?: number;
+
+  @Column({ name: 'nearest_supermarket', type: 'integer', nullable: true })
+  public nearestSupermarket?: number;
+
+  @Column({ name: 'nearest_parking', type: 'integer', nullable: true })
+  public nearestParking?: number;
+
+  @Column({ name: 'nearest_public_transport', type: 'integer', nullable: true })
+  public nearestPublicTransport?: number;
+
+  /**
+   * Full infrastructure data from Overpass API
+   * Format: [{ lat, lng, type, distance, name? }]
+   */
+  @Column({ type: 'jsonb', nullable: true })
+  public infrastructure?: Array<{
+    lat: number;
+    lng: number;
+    type: string;
+    distance: number;
+    name?: string;
+  }>;
+
   // === Geo Resolution Quality ===
   /**
    * Flags indicating how geo data was resolved:

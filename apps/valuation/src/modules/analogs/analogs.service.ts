@@ -147,6 +147,11 @@ export class AnalogsService {
       houseType: listing.houseType,
       matchScore,
       externalUrl: listing.externalUrl,
+      // Infrastructure distances
+      nearestPublicTransport: listing.nearestPublicTransport ?? undefined,
+      nearestSchool: listing.nearestSchool ?? undefined,
+      nearestSupermarket: listing.nearestSupermarket ?? undefined,
+      nearestHospital: listing.nearestHospital ?? undefined,
     };
   }
 

@@ -16,6 +16,7 @@ import { FormatCriterion } from './criteria/format.criterion';
 import { FloorCriterion } from './criteria/floor.criterion';
 import { HouseTypeCriterion } from './criteria/house-type.criterion';
 import { ExposureTimeCriterion } from './criteria/exposure-time.criterion';
+import { InfrastructureCriterion } from './criteria/infrastructure.criterion';
 
 @Module({
   imports: [TypeOrmModule.forFeature([UnifiedListing]), AnalogsModule, FairPriceModule],
@@ -31,6 +32,7 @@ import { ExposureTimeCriterion } from './criteria/exposure-time.criterion';
     FloorCriterion,
     HouseTypeCriterion,
     ExposureTimeCriterion,
+    InfrastructureCriterion,
   ],
   exports: [LiquidityService],
 })

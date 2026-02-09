@@ -12,6 +12,7 @@ import {
 } from '../dto';
 import { VectorPropertyMapper } from '../mappers/vector-property.mapper';
 import { AggregatorPropertyMapper } from '../mappers/aggregator-property.mapper';
+import { InfrastructureService } from '../../infrastructure/infrastructure.service';
 
 @Injectable()
 export class PropertySyncService {
@@ -22,6 +23,7 @@ export class PropertySyncService {
     private readonly listingRepository: Repository<UnifiedListing>,
     private readonly vectorMapper: VectorPropertyMapper,
     private readonly aggregatorMapper: AggregatorPropertyMapper,
+    private readonly infrastructureService: InfrastructureService,
   ) {}
 
   // === Vector Property Operations ===
@@ -136,6 +138,13 @@ export class PropertySyncService {
           `geoId: ${listing.geoId}, streetId: ${listing.streetId}, ` +
           `condition: ${listing.condition}, houseType: ${listing.houseType})`,
       );
+
+      // Fetch infrastructure asynchronously (fire-and-forget)
+      if (listing.lat && listing.lng) {
+        this.infrastructureService.updateListingInfrastructure(listing).catch((err) => {
+          this.logger.warn(`Failed to fetch infrastructure for ${listing.id}: ${err.message}`);
+        });
+      }
     } catch (error) {
       this.logger.error(`Failed to create aggregator property ${data.id}`, error instanceof Error ? error.stack : undefined);
       throw error;

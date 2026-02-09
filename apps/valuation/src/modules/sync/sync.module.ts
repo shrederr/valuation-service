@@ -4,10 +4,9 @@ import { DatabaseModule } from '@libs/database';
 import { RabbitMQModule } from '@libs/rabbitmq';
 import { AttributeMapperService } from '@libs/common';
 import { OsmModule } from '../osm/osm.module';
+import { InfrastructureModule } from '../infrastructure';
 import { GeoSyncService } from './services/geo-sync.service';
 import { PropertySyncService } from './services/property-sync.service';
-import { InitialSyncService } from './services/initial-sync.service';
-import { ConsumerControlService } from './services/consumer-control.service';
 import { GeoSyncConsumer } from './consumers/geo-sync.consumer';
 import { PropertySyncConsumer } from './consumers/property-sync.consumer';
 import { VectorPropertyMapper } from './mappers/vector-property.mapper';
@@ -26,8 +25,6 @@ export class SyncModule {
       // Services
       GeoSyncService,
       PropertySyncService,
-      InitialSyncService,
-      ConsumerControlService,
       // Mappers
       VectorPropertyMapper,
       AggregatorPropertyMapper,
@@ -42,10 +39,10 @@ export class SyncModule {
 
     return {
       module: SyncModule,
-      imports: [ConfigModule, DatabaseModule, RabbitMQModule.forRoot(), OsmModule],
+      imports: [ConfigModule, DatabaseModule, RabbitMQModule.forRoot(), OsmModule, InfrastructureModule],
       controllers: [WebhookController],
       providers: [...baseProviders, ...consumerProviders],
-      exports: [GeoSyncService, PropertySyncService, InitialSyncService, ConsumerControlService],
+      exports: [GeoSyncService, PropertySyncService],
     };
   }
 }

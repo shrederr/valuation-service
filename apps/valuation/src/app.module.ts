@@ -12,6 +12,7 @@ import { FairPriceModule } from './modules/fair-price';
 import { LiquidityModule } from './modules/liquidity';
 import { ValuationModule } from './modules/valuation';
 import { ListingsModule } from './modules/listings/listings.module';
+import { InfrastructureModule } from './modules/infrastructure';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -35,6 +36,7 @@ import { AppService } from './app.service';
     LiquidityModule,
     ValuationModule,
     ListingsModule,
+    InfrastructureModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -37,3 +37,9 @@ dumps/
 *.sql
 *.dump
 test-results/
+
+# Debug output
+output/
+
+# Backup files
+*.backup
