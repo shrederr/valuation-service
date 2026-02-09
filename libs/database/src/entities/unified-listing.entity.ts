@@ -1,10 +1,19 @@
-import { Entity, Column, ManyToOne, JoinColumn, Index, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, ManyToOne, JoinColumn, Index, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, ValueTransformer } from 'typeorm';
 import { SourceType, DealType, RealtyType, MultiLanguageDto } from '@libs/common';
 
 import { Geo } from './geo.entity';
 import { Street } from './street.entity';
 import { Topzone } from './topzone.entity';
 import { ApartmentComplex } from './apartment-complex.entity';
+
+/**
+ * TypeORM returns PostgreSQL decimal/numeric columns as strings.
+ * This transformer converts them to JS numbers automatically.
+ */
+const numericTransformer: ValueTransformer = {
+  to: (value: number | null | undefined) => value,
+  from: (value: string | null | undefined) => value === null || value === undefined ? null : parseFloat(value),
+};
 
 @Entity('unified_listings')
 @Index(['sourceType', 'sourceId'], { unique: true })
@@ -78,33 +87,33 @@ export class UnifiedListing {
   public corps?: string;
 
   // === Coordinates ===
-  @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
+  @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true, transformer: numericTransformer })
   public lat?: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
+  @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true, transformer: numericTransformer })
   public lng?: number;
 
   // === Price ===
-  @Column({ type: 'decimal', precision: 15, scale: 2, nullable: true })
+  @Column({ type: 'decimal', precision: 15, scale: 2, nullable: true, transformer: numericTransformer })
   public price?: number;
 
   @Column({ type: 'text', default: 'USD' })
   public currency: string;
 
-  @Column({ name: 'price_per_meter', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  @Column({ name: 'price_per_meter', type: 'decimal', precision: 12, scale: 2, nullable: true, transformer: numericTransformer })
   public pricePerMeter?: number;
 
   // === Characteristics ===
-  @Column({ name: 'total_area', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  @Column({ name: 'total_area', type: 'decimal', precision: 10, scale: 2, nullable: true, transformer: numericTransformer })
   public totalArea?: number;
 
-  @Column({ name: 'living_area', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  @Column({ name: 'living_area', type: 'decimal', precision: 10, scale: 2, nullable: true, transformer: numericTransformer })
   public livingArea?: number;
 
-  @Column({ name: 'kitchen_area', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  @Column({ name: 'kitchen_area', type: 'decimal', precision: 10, scale: 2, nullable: true, transformer: numericTransformer })
   public kitchenArea?: number;
 
-  @Column({ name: 'land_area', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  @Column({ name: 'land_area', type: 'decimal', precision: 12, scale: 2, nullable: true, transformer: numericTransformer })
   public landArea?: number;
 
   @Column({ type: 'integer', nullable: true })
