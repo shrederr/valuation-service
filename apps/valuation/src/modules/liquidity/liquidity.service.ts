@@ -6,9 +6,10 @@ import { SourceType } from '@libs/common';
 import { LiquidityDto, LiquidityCriterionDto, FairPriceDto } from '@libs/models';
 
 import { FairPriceService } from '../fair-price';
+import { AnalogsService } from '../analogs';
 
 import { PriceCriterion } from './criteria/price.criterion';
-import { PricePerMeterCriterion } from './criteria/price-per-meter.criterion';
+import { LivingAreaCriterion } from './criteria/living-area.criterion';
 import { CompetitionCriterion } from './criteria/competition.criterion';
 import { LocationCriterion } from './criteria/location.criterion';
 import { ConditionCriterion } from './criteria/condition.criterion';
@@ -17,7 +18,11 @@ import { FloorCriterion } from './criteria/floor.criterion';
 import { HouseTypeCriterion } from './criteria/house-type.criterion';
 import { ExposureTimeCriterion } from './criteria/exposure-time.criterion';
 import { InfrastructureCriterion } from './criteria/infrastructure.criterion';
-import { CriterionResult, CriterionContext, MEDIAN_DAYS_TO_SELL } from './criteria/base.criterion';
+import { FurnitureCriterion } from './criteria/furniture.criterion';
+import { CommunicationsCriterion } from './criteria/communications.criterion';
+import { UniqueFeaturesCriterion } from './criteria/unique-features.criterion';
+import { BuyConditionsCriterion } from './criteria/buy-conditions.criterion';
+import { CriterionResult, CriterionContext, ExposureStats, MEDIAN_DAYS_TO_SELL } from './criteria/base.criterion';
 
 export interface LiquidityOptions {
   sourceType?: SourceType;
@@ -33,8 +38,9 @@ export class LiquidityService {
     @InjectRepository(UnifiedListing)
     private readonly listingRepository: Repository<UnifiedListing>,
     private readonly fairPriceService: FairPriceService,
+    private readonly analogsService: AnalogsService,
     private readonly priceCriterion: PriceCriterion,
-    private readonly pricePerMeterCriterion: PricePerMeterCriterion,
+    private readonly livingAreaCriterion: LivingAreaCriterion,
     private readonly competitionCriterion: CompetitionCriterion,
     private readonly locationCriterion: LocationCriterion,
     private readonly conditionCriterion: ConditionCriterion,
@@ -43,6 +49,10 @@ export class LiquidityService {
     private readonly houseTypeCriterion: HouseTypeCriterion,
     private readonly exposureTimeCriterion: ExposureTimeCriterion,
     private readonly infrastructureCriterion: InfrastructureCriterion,
+    private readonly furnitureCriterion: FurnitureCriterion,
+    private readonly communicationsCriterion: CommunicationsCriterion,
+    private readonly uniqueFeaturesCriterion: UniqueFeaturesCriterion,
+    private readonly buyConditionsCriterion: BuyConditionsCriterion,
   ) {}
 
   public async calculateLiquidity(options: LiquidityOptions): Promise<LiquidityDto> {
@@ -53,22 +63,47 @@ export class LiquidityService {
     }
 
     let fairPrice: FairPriceDto | undefined;
+    let analogs: UnifiedListing[] | undefined;
 
     try {
-      fairPrice = await this.fairPriceService.calculateFairPrice({ listingId: subject.id });
+      const analogsResult = await this.analogsService.findAnalogs({ listingId: subject.id });
+      // Получаем raw UnifiedListing объекты для min-max нормализации
+      if (analogsResult.analogs.length > 0) {
+        analogs = await this.listingRepository
+          .createQueryBuilder('listing')
+          .where('listing.id IN (:...ids)', { ids: analogsResult.analogs.map((a) => a.id) })
+          .getMany();
+      }
+      fairPrice = this.fairPriceService.calculateFromAnalogs(subject, analogsResult.analogs);
     } catch {
       this.logger.warn(`Could not calculate fair price for listing ${subject.id}`);
     }
 
-    return this.calculateFromSubject(subject, fairPrice);
+    // Получаем реальные данные по экспозиции
+    let exposureStats: ExposureStats | null = null;
+    try {
+      exposureStats = await this.exposureTimeCriterion.calculateAverageExposureTime(
+        subject.geoId ?? null,
+        subject.realtyType,
+      );
+    } catch {
+      this.logger.warn(`Could not calculate exposure stats for listing ${subject.id}`);
+    }
+
+    return this.calculateFromSubject(subject, fairPrice, analogs, exposureStats);
   }
 
-  public calculateFromSubject(subject: UnifiedListing, fairPrice?: FairPriceDto): LiquidityDto {
-    const context: CriterionContext = { subject, fairPrice };
+  public calculateFromSubject(
+    subject: UnifiedListing,
+    fairPrice?: FairPriceDto,
+    analogs?: UnifiedListing[],
+    exposureStats?: ExposureStats | null,
+  ): LiquidityDto {
+    const context: CriterionContext = { subject, fairPrice, analogs, exposureStats };
 
     const criteriaResults: CriterionResult[] = [
       this.priceCriterion.evaluate(context),
-      this.pricePerMeterCriterion.evaluate(context),
+      this.livingAreaCriterion.evaluate(context),
       this.exposureTimeCriterion.evaluate(context),
       this.competitionCriterion.evaluate(context),
       this.locationCriterion.evaluate(context),
@@ -77,6 +112,10 @@ export class LiquidityService {
       this.floorCriterion.evaluate(context),
       this.houseTypeCriterion.evaluate(context),
       this.infrastructureCriterion.evaluate(context),
+      this.furnitureCriterion.evaluate(context),
+      this.communicationsCriterion.evaluate(context),
+      this.uniqueFeaturesCriterion.evaluate(context),
+      this.buyConditionsCriterion.evaluate(context),
     ];
 
     const totalWeight = criteriaResults.reduce((sum, c) => sum + c.weight, 0);
@@ -86,6 +125,7 @@ export class LiquidityService {
     const level = this.determineLevel(score);
     const estimatedDaysToSell = this.estimateDaysToSell(score, subject.realtyType);
     const recommendations = this.generateRecommendations(criteriaResults);
+    const confidence = this.determineConfidence(totalWeight);
 
     return {
       score,
@@ -93,6 +133,7 @@ export class LiquidityService {
       criteria: criteriaResults.map((c) => this.mapToCriterionDto(c)),
       estimatedDaysToSell,
       recommendations: recommendations.length > 0 ? recommendations : undefined,
+      confidence,
     };
   }
 
@@ -109,29 +150,34 @@ export class LiquidityService {
   }
 
   /**
+   * Определяет достоверность оценки на основе суммы весов оценённых критериев.
+   * Если суммарный вес < 0.6, данных недостаточно.
+   */
+  private determineConfidence(totalWeight: number): 'high' | 'medium' | 'low' {
+    if (totalWeight >= 0.7) {
+      return 'high';
+    }
+    if (totalWeight >= 0.5) {
+      return 'medium';
+    }
+    return 'low';
+  }
+
+  /**
    * Расчет ориентировочного времени продажи на основе:
    * 1. Реальных данных по медианному времени продажи для типа недвижимости
    * 2. Корректировки на основе скоринга ликвидности
-   *
-   * Логика: базовое время (медиана) * коэффициент скоринга
-   * - Высокий скоринг (9-10) = 50% от медианы
-   * - Средний скоринг (5-6) = 100% медианы
-   * - Низкий скоринг (1-3) = 200% от медианы
    */
   private estimateDaysToSell(score: number, realtyType?: string): number {
-    // Базовое медианное время для типа недвижимости
     const type = (realtyType || 'default') as keyof typeof MEDIAN_DAYS_TO_SELL;
     const baseDays = MEDIAN_DAYS_TO_SELL[type] || MEDIAN_DAYS_TO_SELL.default;
 
-    // Коэффициент корректировки на основе скоринга
     // score 10 -> multiplier 0.5 (в 2 раза быстрее)
     // score 5 -> multiplier 1.0 (медианное время)
     // score 0 -> multiplier 2.0 (в 2 раза дольше)
     const multiplier = 2 - (score / 10) * 1.5;
 
     const estimatedDays = Math.round(baseDays * multiplier);
-
-    // Ограничиваем минимум 7 дней, максимум 180 дней
     return Math.max(7, Math.min(180, estimatedDays));
   }
 
@@ -139,16 +185,16 @@ export class LiquidityService {
     const recommendations: string[] = [];
 
     for (const criterion of criteria) {
-      if (criterion.score < 5) {
+      if (criterion.score < 5 && criterion.weight > 0) {
         switch (criterion.name) {
           case 'price':
             recommendations.push('Розгляньте можливість зниження ціни для швидшого продажу');
             break;
-          case 'pricePerMeter':
-            recommendations.push('Ціна за м² вища за ринкову - розгляньте коригування');
+          case 'livingArea':
+            recommendations.push('Площа менша за аналоги — підкресліть інші переваги');
             break;
           case 'competition':
-            recommendations.push('Висока конкуренція на ринку - потрібна конкурентна ціна або унікальна пропозиція');
+            recommendations.push('Висока конкуренція на ринку — потрібна конкурентна ціна або унікальна пропозиція');
             break;
           case 'condition':
             recommendations.push('Косметичний ремонт може підвищити ліквідність');
@@ -157,7 +203,16 @@ export class LiquidityService {
             recommendations.push('Зверніть увагу на особливості поверху в описі');
             break;
           case 'infrastructure':
-            recommendations.push('Об\'єкт далеко від інфраструктури - підкресліть інші переваги локації');
+            recommendations.push('Об\'єкт далеко від інфраструктури — підкресліть інші переваги локації');
+            break;
+          case 'furniture':
+            recommendations.push('Додавання меблів та техніки може підвищити ліквідність');
+            break;
+          case 'communications':
+            recommendations.push('Недостатньо комунікацій — це може ускладнити продаж');
+            break;
+          case 'exposureTime':
+            recommendations.push('Час експозиції вище ринку — розгляньте коригування ціни');
             break;
         }
       }

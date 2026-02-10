@@ -8,7 +8,7 @@ import { FairPriceModule } from '../fair-price';
 import { LiquidityService } from './liquidity.service';
 import { LiquidityController } from './liquidity.controller';
 import { PriceCriterion } from './criteria/price.criterion';
-import { PricePerMeterCriterion } from './criteria/price-per-meter.criterion';
+import { LivingAreaCriterion } from './criteria/living-area.criterion';
 import { CompetitionCriterion } from './criteria/competition.criterion';
 import { LocationCriterion } from './criteria/location.criterion';
 import { ConditionCriterion } from './criteria/condition.criterion';
@@ -17,14 +17,20 @@ import { FloorCriterion } from './criteria/floor.criterion';
 import { HouseTypeCriterion } from './criteria/house-type.criterion';
 import { ExposureTimeCriterion } from './criteria/exposure-time.criterion';
 import { InfrastructureCriterion } from './criteria/infrastructure.criterion';
+import { FurnitureCriterion } from './criteria/furniture.criterion';
+import { CommunicationsCriterion } from './criteria/communications.criterion';
+import { UniqueFeaturesCriterion } from './criteria/unique-features.criterion';
+import { BuyConditionsCriterion } from './criteria/buy-conditions.criterion';
+import { PrimaryDataExtractor } from './services/primary-data-extractor';
 
 @Module({
   imports: [TypeOrmModule.forFeature([UnifiedListing]), AnalogsModule, FairPriceModule],
   controllers: [LiquidityController],
   providers: [
     LiquidityService,
+    PrimaryDataExtractor,
     PriceCriterion,
-    PricePerMeterCriterion,
+    LivingAreaCriterion,
     CompetitionCriterion,
     LocationCriterion,
     ConditionCriterion,
@@ -33,6 +39,10 @@ import { InfrastructureCriterion } from './criteria/infrastructure.criterion';
     HouseTypeCriterion,
     ExposureTimeCriterion,
     InfrastructureCriterion,
+    FurnitureCriterion,
+    CommunicationsCriterion,
+    UniqueFeaturesCriterion,
+    BuyConditionsCriterion,
   ],
   exports: [LiquidityService],
 })

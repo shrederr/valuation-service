@@ -9,9 +9,17 @@ export interface CriterionResult {
   explanation?: string;
 }
 
+export interface ExposureStats {
+  medianDays: number;
+  avgDays: number;
+  count: number;
+}
+
 export interface CriterionContext {
   subject: UnifiedListing;
   fairPrice?: FairPriceDto;
+  analogs?: UnifiedListing[];
+  exposureStats?: ExposureStats | null;
 }
 
 export abstract class BaseCriterion {
@@ -50,7 +58,7 @@ export abstract class BaseCriterion {
 // Веса согласно ТЗ (Оценка ликвидности.xlsx)
 export const LIQUIDITY_WEIGHTS = {
   price: 0.20,           // Цена
-  pricePerMeter: 0.03,   // Жилая площадь (косвенно через цену за м²)
+  livingArea: 0.03,      // Жилая площадь (больше = лучше, min-max нормализация)
   exposureTime: 0.08,    // Среднее время экспозиции на рынке
   competition: 0.05,     // Соотношение спроса и предложения
   location: 0.07,        // Вид из окон + природа (0.04 + 0.03)
@@ -60,7 +68,7 @@ export const LIQUIDITY_WEIGHTS = {
   floor: 0.06,           // Этаж
   houseType: 0.05,       // Тип здания
   furniture: 0.07,       // Мебель и техника
-  windows: 0.05,         // Тип окон
+  windows: 0.05,         // Тип окон (не реализован - нет данных)
   uniqueFeatures: 0.06,  // Уникальные преимущества
   buyConditions: 0.04,   // Условия покупки
   communications: 0.05,  // Коммуникации

@@ -77,14 +77,19 @@ const translations = {
   },
   criteria: {
     price: 'Ціна',
-    pricePerMeter: 'Ціна за м²',
+    livingArea: 'Житлова площа',
     exposureTime: 'Час експозиції',
     competition: 'Конкуренція',
     location: 'Локація',
+    infrastructure: 'Інфраструктура',
     condition: 'Стан',
     format: 'Формат',
     floor: 'Поверх',
     houseType: 'Тип будинку',
+    furniture: 'Меблі та техніка',
+    communications: 'Комунікації',
+    uniqueFeatures: 'Унікальні переваги',
+    buyConditions: 'Умови купівлі',
   },
   searchRadius: {
     building: 'Той самий будинок',
@@ -291,6 +296,19 @@ function displayLiquidity(liquidity) {
   elements.liquidityLevel.classList.remove('high', 'medium', 'low');
   elements.liquidityLevel.classList.add(liquidity.level || 'medium');
 
+  // Confidence badge
+  const confidenceBadge = document.getElementById('confidenceBadge');
+  if (confidenceBadge) {
+    if (liquidity.confidence) {
+      const confLabels = { high: 'Висока достовірність', medium: 'Середня достовірність', low: 'Низька достовірність' };
+      confidenceBadge.textContent = confLabels[liquidity.confidence] || '';
+      confidenceBadge.className = `confidence-badge ${liquidity.confidence}`;
+      confidenceBadge.classList.remove('hidden');
+    } else {
+      confidenceBadge.classList.add('hidden');
+    }
+  }
+
   // Days
   elements.estimatedDays.textContent = `${liquidity.estimatedDaysToSell || '-'} днів`;
 
@@ -307,7 +325,10 @@ function displayCriteria(criteria) {
     return;
   }
 
-  elements.criteriaGrid.innerHTML = criteria.map(c => {
+  const evaluated = criteria.filter(c => c.weight > 0);
+  const missing = criteria.filter(c => c.weight === 0);
+
+  let html = evaluated.map(c => {
     const level = c.score >= 7 ? 'high' : c.score >= 5 ? 'medium' : 'low';
     const name = translations.criteria[c.name] || c.name;
 
@@ -324,6 +345,23 @@ function displayCriteria(criteria) {
       </div>
     `;
   }).join('');
+
+  if (missing.length > 0) {
+    html += missing.map(c => {
+      const name = translations.criteria[c.name] || c.name;
+      return `
+        <div class="criterion-item criterion-missing">
+          <div class="criterion-header">
+            <span class="criterion-name">${name}</span>
+            <span class="criterion-score missing">—</span>
+          </div>
+          <div class="criterion-explanation missing-text">${c.explanation || 'Немає даних'}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  elements.criteriaGrid.innerHTML = html;
 }
 
 function displayRecommendations(recommendations) {
@@ -510,8 +548,9 @@ function displayReportInfo(data) {
   elements.generatedAt.textContent = data.generatedAt
     ? new Date(data.generatedAt).toLocaleString('uk-UA')
     : '-';
-  elements.confidence.textContent = data.confidence
-    ? `${Math.round(data.confidence * 100)}%`
+  const confLabels = { high: 'Висока', medium: 'Середня', low: 'Низька' };
+  elements.confidence.textContent = data.liquidity?.confidence
+    ? confLabels[data.liquidity.confidence]
     : '-';
 }
 

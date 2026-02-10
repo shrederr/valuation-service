@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull, Not, MoreThan } from 'typeorm';
+import { Repository } from 'typeorm';
 import { UnifiedListing } from '@libs/database';
 
 import { BaseCriterion, CriterionResult, CriterionContext, LIQUIDITY_WEIGHTS, MEDIAN_DAYS_TO_SELL } from './base.criterion';
@@ -18,20 +18,75 @@ export class ExposureTimeCriterion extends BaseCriterion {
   }
 
   public evaluate(context: CriterionContext): CriterionResult {
-    // Базовая оценка без async запроса
-    // Реальное среднее время будет использоваться в estimateDaysToSell
-    const { subject, fairPrice } = context;
+    const { subject, fairPrice, exposureStats } = context;
 
     if (!fairPrice || fairPrice.analogsCount === undefined || fairPrice.analogsCount === 0) {
       return this.createNullResult('Немає аналогів для оцінки часу експозиції');
     }
 
-    // Используем медианное время для типа недвижимости как базу
     const realtyType = subject.realtyType as keyof typeof MEDIAN_DAYS_TO_SELL;
-    const medianDays = MEDIAN_DAYS_TO_SELL[realtyType] || MEDIAN_DAYS_TO_SELL.default;
+    const baseDays = MEDIAN_DAYS_TO_SELL[realtyType] || MEDIAN_DAYS_TO_SELL.default;
 
-    // Если цена ниже рынка - время экспозиции будет меньше
-    // Если цена выше рынка - время экспозиции будет больше
+    // Если есть реальные данные из БД — используем их
+    if (exposureStats && exposureStats.count >= 10 && exposureStats.medianDays > 0) {
+      return this.evaluateWithRealData(subject, fairPrice, exposureStats.medianDays, baseDays);
+    }
+
+    // Fallback: оценка по вердикту fair price
+    return this.evaluateByVerdict(fairPrice, baseDays);
+  }
+
+  /**
+   * Оценка на основе реальных данных экспозиции из БД.
+   * Сравниваем предполагаемое время продажи объекта с реальной медианой рынка.
+   */
+  private evaluateWithRealData(
+    subject: UnifiedListing,
+    fairPrice: { verdict: string },
+    realMedianDays: number,
+    baseDays: number,
+  ): CriterionResult {
+    // Множитель на основе цены: дешевые продаются быстрее
+    let priceMultiplier = 1.0;
+    if (fairPrice.verdict === 'cheap') {
+      priceMultiplier = 0.6;
+    } else if (fairPrice.verdict === 'expensive') {
+      priceMultiplier = 1.5;
+    }
+
+    const subjectEstimate = baseDays * priceMultiplier;
+    const ratio = subjectEstimate / realMedianDays;
+
+    let score: number;
+    if (ratio <= 0.5) {
+      score = 10;
+    } else if (ratio <= 0.8) {
+      score = 8;
+    } else if (ratio <= 1.0) {
+      score = 7;
+    } else if (ratio <= 1.2) {
+      score = 6;
+    } else if (ratio <= 1.5) {
+      score = 5;
+    } else if (ratio <= 2.0) {
+      score = 3;
+    } else {
+      score = 2;
+    }
+
+    const estimatedDays = Math.round(subjectEstimate);
+    const explanation = `Оцінка ${estimatedDays} днів vs медіана ринку ${realMedianDays} днів`;
+
+    return this.createResult(score, explanation);
+  }
+
+  /**
+   * Fallback: оценка по вердикту fair price (текущая логика).
+   */
+  private evaluateByVerdict(
+    fairPrice: { verdict: string },
+    medianDays: number,
+  ): CriterionResult {
     let score: number;
     let explanation: string;
 
@@ -50,7 +105,8 @@ export class ExposureTimeCriterion extends BaseCriterion {
   }
 
   /**
-   * Рассчитывает реальное среднее время экспозиции для аналогичных объектов
+   * Рассчитывает реальное среднее время экспозиции для аналогичных объектов.
+   * Вызывается из LiquidityService перед evaluate().
    */
   public async calculateAverageExposureTime(
     geoId: number | null,

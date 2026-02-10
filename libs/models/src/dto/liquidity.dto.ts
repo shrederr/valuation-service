@@ -38,4 +38,10 @@ export class LiquidityDto {
 
   @ApiPropertyOptional({ description: 'Additional recommendations' })
   public recommendations?: string[];
+
+  @ApiPropertyOptional({
+    enum: ['high', 'medium', 'low'],
+    description: 'Confidence level based on available data coverage',
+  })
+  public confidence?: 'high' | 'medium' | 'low';
 }
