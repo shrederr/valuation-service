@@ -69,6 +69,7 @@ export class StreetMatcherService {
     lat: number,
     text?: string,
     geoId?: number,
+    skipNearestFallback = false,
   ): Promise<StreetMatchResult> {
     // 1. Get nearest street candidates
     const candidates = await this.streetRepository.findNearestStreets(lng, lat, geoId, 5, 500);
@@ -111,7 +112,11 @@ export class StreetMatcherService {
       }
     }
 
-    // 4. Fallback to nearest street
+    // 4. Fallback to nearest street (skip for OLX — coordinates are approximate)
+    if (skipNearestFallback) {
+      return { streetId: null, matchMethod: 'nearest', confidence: 0 };
+    }
+
     const nearest = candidates[0];
     return {
       streetId: nearest.street.id,

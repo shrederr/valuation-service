@@ -188,6 +188,7 @@ export class GeoLookupService {
     lat: number | undefined,
     text?: string,
     existingGeoId?: number,
+    skipNearestFallback = false,
   ): Promise<GeoResolutionResult> {
     if (!lng || !lat) {
       return { geoId: existingGeoId || null, streetId: null, isCityLevel: false };
@@ -211,7 +212,7 @@ export class GeoLookupService {
     }
 
     // Use StreetMatcherService for smart street matching
-    const streetResult = await this.streetMatcherService.resolveStreet(lng, lat, text, geo?.id);
+    const streetResult = await this.streetMatcherService.resolveStreet(lng, lat, text, geo?.id, skipNearestFallback);
 
     return {
       geoId: geo?.id || existingGeoId || null,

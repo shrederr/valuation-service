@@ -35,6 +35,12 @@ export class PropertySyncService {
 
       await this.listingRepository.save(listing);
       this.logger.log(`Vector property created: ${data.id} (unified: ${listing.id})`);
+
+      if (listing.lat && listing.lng) {
+        this.infrastructureService.updateListingInfrastructure(listing).catch((err) => {
+          this.logger.warn(`Failed to fetch infrastructure for vector ${listing.id}: ${err.message}`);
+        });
+      }
     } catch (error) {
       this.logger.error(`Failed to create vector property ${data.id}`, error instanceof Error ? error.stack : undefined);
       throw error;
@@ -57,6 +63,12 @@ export class PropertySyncService {
         const merged = this.listingRepository.merge(existing, updateData);
         await this.listingRepository.save(merged);
         this.logger.log(`Vector property updated: ${data.id}`);
+
+        if (!existing.infrastructure && merged.lat && merged.lng) {
+          this.infrastructureService.updateListingInfrastructure(merged).catch((err) => {
+            this.logger.warn(`Failed to fetch infrastructure for vector ${merged.id}: ${err.message}`);
+          });
+        }
       } else {
         await this.handleVectorPropertyCreated(data);
       }
@@ -129,13 +141,19 @@ export class PropertySyncService {
       }
 
       const result = await this.aggregatorMapper.mapToUnifiedListing(data);
-      const { geo, street, topzone, complex, topzoneId, complexId, ...listingData } = result.listing;
+      // Strip TypeORM relation objects but keep resolved IDs (complexId is now resolved by ComplexMatcherService)
+      const { geo, street, topzone, complex, topzoneId, ...listingData } = result.listing;
       const listing = this.listingRepository.create(listingData);
 
       await this.listingRepository.save(listing);
+
+      const complexInfo = result.complexMatch
+        ? `, complex: ${result.complexMatch.complexName} (${result.complexMatch.method})`
+        : '';
       this.logger.log(
         `Aggregator property created: ${data.id} (unified: ${listing.id}, ` +
           `geoId: ${listing.geoId}, streetId: ${listing.streetId}, ` +
+          `complexId: ${listing.complexId}${complexInfo}, ` +
           `condition: ${listing.condition}, houseType: ${listing.houseType})`,
       );
 
@@ -162,14 +180,21 @@ export class PropertySyncService {
 
       if (existing) {
         const result = await this.aggregatorMapper.mapToUnifiedListing(data);
+        // Strip TypeORM relation objects but keep resolved IDs
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { geo, street, topzone, complex, topzoneId, complexId, ...updateData } = result.listing;
+        const { geo, street, topzone, complex, topzoneId, ...updateData } = result.listing;
         const merged = this.listingRepository.merge(existing, updateData);
         await this.listingRepository.save(merged);
         this.logger.log(
           `Aggregator property updated: ${data.id} ` +
-            `(geoId: ${merged.geoId}, streetId: ${merged.streetId})`,
+            `(geoId: ${merged.geoId}, streetId: ${merged.streetId}, complexId: ${merged.complexId})`,
         );
+
+        if (!existing.infrastructure && merged.lat && merged.lng) {
+          this.infrastructureService.updateListingInfrastructure(merged).catch((err) => {
+            this.logger.warn(`Failed to fetch infrastructure for aggregator ${merged.id}: ${err.message}`);
+          });
+        }
       } else if (data.isActive) {
         // Only create new record if property is active
         await this.handleAggregatorPropertyCreated(data);

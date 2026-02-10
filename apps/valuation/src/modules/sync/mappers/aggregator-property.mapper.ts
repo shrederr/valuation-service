@@ -3,10 +3,18 @@ import { SourceType, DealType, RealtyType, AttributeMapperService } from '@libs/
 import { UnifiedListing } from '@libs/database';
 import { AggregatorPropertyEventDto } from '../dto';
 import { GeoLookupService, GeoResolutionResult } from '../../osm/geo-lookup.service';
+import { ComplexMatcherService } from '../services/complex-matcher.service';
+
+export interface ComplexMatchInfo {
+  complexId: number;
+  complexName: string;
+  method: 'text' | 'coordinates';
+}
 
 export interface MappingResult {
   listing: Partial<UnifiedListing>;
   geoResolution: GeoResolutionResult | null;
+  complexMatch: ComplexMatchInfo | null;
   attributeFallbacks: {
     conditionFallback: boolean;
     houseTypeFallback: boolean;
@@ -20,6 +28,7 @@ export class AggregatorPropertyMapper {
   constructor(
     private readonly geoLookupService: GeoLookupService,
     private readonly attributeMapperService: AttributeMapperService,
+    private readonly complexMatcherService: ComplexMatcherService,
   ) {}
 
   /**
@@ -52,30 +61,94 @@ export class AggregatorPropertyMapper {
       data.url,
     );
 
-    // Resolve geo and street by coordinates + text
-    let geoResolution: GeoResolutionResult | null = null;
-    let geoId: number | undefined = undefined; // Резолвим по координатам
-    let streetId: number | undefined = undefined; // Резолвим по координатам
+    const isOlx = platform === 'olx';
 
-    if (data.lng && data.lat) {
-      // Build text for street matching from address/title
+    // 1. Try to match apartment complex by text (zkh param + title + description)
+    let complexMatch: ComplexMatchInfo | null = null;
+    let complexId: number | undefined = undefined;
+
+    try {
+      const complexText = this.buildTextForComplexMatching(data);
+      if (complexText) {
+        const result = await this.complexMatcherService.findComplex(
+          complexText,
+          data.description?.uk,
+          isOlx ? undefined : data.lat, // For OLX: don't use coordinates (approximate)
+          isOlx ? undefined : data.lng,
+        );
+
+        if (result.complex) {
+          complexId = result.complex.id;
+          complexMatch = {
+            complexId: result.complex.id,
+            complexName: result.complex.nameRu || result.complex.nameUk,
+            method: result.method as 'text' | 'coordinates',
+          };
+          this.logger.debug(
+            `Complex matched by ${result.method} for property ${data.id}: ${result.complex.nameRu} (id=${result.complex.id})`,
+          );
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`Complex matching failed for property ${data.id}: ${err instanceof Error ? err.message : err}`);
+    }
+
+    // 2. Resolve geo and street
+    let geoResolution: GeoResolutionResult | null = null;
+    let geoId: number | undefined = undefined;
+    let streetId: number | undefined = undefined;
+
+    // If complex found with known coordinates → use complex coordinates for street resolution (more accurate)
+    const complexData = complexMatch ? this.complexMatcherService.getComplexById(complexMatch.complexId) : null;
+
+    if (complexData?.streetId) {
+      // Complex has a known street → use it directly
+      streetId = complexData.streetId;
+      geoId = complexData.geoId;
+
+      // Still resolve geoId from coordinates if complex doesn't have one
+      if (!geoId && data.lng && data.lat) {
+        geoResolution = await this.geoLookupService.resolveGeoForListingWithText(
+          data.lng, data.lat, undefined, data.geoId,
+        );
+        geoId = geoResolution.geoId ?? undefined;
+      }
+
+      this.logger.debug(
+        `Using complex street for property ${data.id}: streetId=${streetId}, geoId=${geoId}`,
+      );
+    } else if (complexData?.lat && complexData?.lng) {
+      // Complex has accurate coordinates → use them for street resolution
+      const textForMatching = this.buildTextForMatching(data);
+      geoResolution = await this.geoLookupService.resolveGeoForListingWithText(
+        complexData.lng,
+        complexData.lat,
+        textForMatching,
+        data.geoId,
+      );
+
+      geoId = geoResolution.geoId ?? undefined;
+      streetId = geoResolution.streetId ?? undefined;
+
+      this.logger.debug(
+        `Using complex coords for property ${data.id}: geoId=${geoId}, streetId=${streetId}`,
+      );
+    } else if (data.lng && data.lat) {
+      // No complex → resolve by listing coordinates
       const textForMatching = this.buildTextForMatching(data);
 
+      // For OLX: skip nearest street fallback (coordinates are approximate)
       geoResolution = await this.geoLookupService.resolveGeoForListingWithText(
         data.lng,
         data.lat,
         textForMatching,
         data.geoId,
+        isOlx, // skipNearestFallback for OLX
       );
 
-      if (geoResolution.geoId) {
-        geoId = geoResolution.geoId;
-      }
-      if (geoResolution.streetId) {
-        streetId = geoResolution.streetId;
-      }
+      geoId = geoResolution.geoId ?? undefined;
+      streetId = geoResolution.streetId ?? undefined;
 
-      // Log if we matched street by text (not nearest)
       if (geoResolution.streetMatchMethod && geoResolution.streetMatchMethod !== 'nearest') {
         this.logger.debug(
           `Street matched by ${geoResolution.streetMatchMethod} for aggregator property ${data.id}: streetId=${streetId}`,
@@ -100,7 +173,7 @@ export class AggregatorPropertyMapper {
       geoId: geoId || undefined,
       streetId: streetId || undefined,
       topzoneId: undefined, // Aggregator topzoneId не совпадает с нашей БД
-      complexId: undefined, // Aggregator complexId не совпадает с нашей БД
+      complexId: complexId || undefined, // Resolved via ComplexMatcherService
       houseNumber: data.houseNumber || undefined,
       apartmentNumber: this.extractNumber(attrs.apartmentNumber) ?? undefined,
       corps: (attrs.corps as string) || undefined,
@@ -137,11 +210,45 @@ export class AggregatorPropertyMapper {
     return {
       listing,
       geoResolution,
+      complexMatch,
       attributeFallbacks: {
         conditionFallback: attributeResult.conditionFallback ?? false,
         houseTypeFallback: attributeResult.houseTypeFallback ?? false,
       },
     };
+  }
+
+  /**
+   * Build text for complex matching: OLX zkh param + title
+   */
+  private buildTextForComplexMatching(data: AggregatorPropertyEventDto): string {
+    const parts: string[] = [];
+
+    if (data.primaryData) {
+      const pd = data.primaryData;
+
+      // OLX: extract zkh (apartment complex) param
+      if (pd.params && Array.isArray(pd.params)) {
+        const zkhParam = (pd.params as Array<Record<string, unknown>>).find(
+          (p) => p.key === 'zkh' || p.key === 'complex_name',
+        );
+        if (zkhParam?.value && typeof zkhParam.value === 'string') {
+          parts.push(zkhParam.value);
+        }
+      }
+
+      // domRia: complex name
+      if (pd.complex_name) parts.push(String(pd.complex_name));
+      if (pd.building_name) parts.push(String(pd.building_name));
+
+      // realtorUa: complex name
+      if (pd.complexName) parts.push(String(pd.complexName));
+
+      // Title often contains ЖК name
+      if (pd.title) parts.push(String(pd.title));
+    }
+
+    return parts.join(' ');
   }
 
   /**
