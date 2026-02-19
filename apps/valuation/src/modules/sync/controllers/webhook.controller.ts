@@ -164,15 +164,15 @@ export class WebhookController {
       return { success: false, message };
     }
 
-    // Step 2: Valuation
-    let valuation: Record<string, unknown> | undefined;
+    // Step 2: Liquidity score
+    let liquidityScore: number | null = null;
     try {
       const report = await this.valuationService.getFullReport({
         sourceType: SourceType.VECTOR_CRM,
         sourceId: payload.data.id,
         forceRefresh: true,
       });
-      valuation = report as unknown as Record<string, unknown>;
+      liquidityScore = report.liquidity?.score ?? null;
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
       this.logger.warn(`Valuation failed for vector2 ${payload.data.id}: ${msg}`);
@@ -186,7 +186,7 @@ export class WebhookController {
       sourceId: payload.data.id,
       listingId,
       syncedAt: new Date(),
-      valuation: valuation || null,
+      liquidityScore,
     };
   }
 }
