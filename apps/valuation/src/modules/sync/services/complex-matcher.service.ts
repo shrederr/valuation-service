@@ -92,7 +92,7 @@ export class ComplexMatcherService implements OnModuleInit {
       // Pattern 1: Exact match with ЖК/КГ prefix
       patterns.push(new RegExp(
         `(?:жк|жилой комплекс|житловий комплекс|кг|км|коттеджный городок|котеджне містечко)?\\s*["«']?${this.escapeRegex(cleaned)}["»']?`,
-        'gi'
+          'gi',
       ));
 
       // Pattern 2: Just the name
@@ -213,7 +213,6 @@ export class ComplexMatcherService implements OnModuleInit {
    * Find complex by coordinates (point in polygon or nearest)
    */
   async findComplexByCoordinates(lat: number, lng: number): Promise<ApartmentComplex | null> {
-    // First try point-in-polygon
     const inPolygon = await this.complexRepository.query(`
       SELECT id, name_ru, name_uk, lat, lng, geo_id, street_id,
              polygon IS NOT NULL as has_polygon
@@ -227,7 +226,6 @@ export class ComplexMatcherService implements OnModuleInit {
       return this.mapRowToComplex(inPolygon[0]);
     }
 
-    // Fallback: find nearest within 100m
     const nearest = await this.complexRepository.query(`
       SELECT id, name_ru, name_uk, lat, lng, geo_id, street_id,
              polygon IS NOT NULL as has_polygon,

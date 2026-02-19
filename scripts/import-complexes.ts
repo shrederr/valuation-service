@@ -2,6 +2,13 @@ import * as fs from 'fs';
 import * as https from 'https';
 import * as path from 'path';
 
+// Overpass API configuration
+const OVERPASS_HOST = process.env.OVERPASS_HOST || 'overpass.atlanta.ua';
+const OVERPASS_PATH = process.env.OVERPASS_PATH || '/api/interpreter';
+const OVERPASS_AUTH = process.env.OVERPASS_AUTH || 'admin:kiTO28hgiADPRBEN';
+// Delay between regions in ms (0 for local/private API, 5000 for public)
+const OVERPASS_DELAY = parseInt(process.env.OVERPASS_DELAY || '500', 10);
+
 interface Complex {
   id?: number;
   osmId?: number;
@@ -126,16 +133,17 @@ out body geom;
     const postData = 'data=' + encodeURIComponent(query);
 
     const options = {
-      hostname: 'overpass-api.de',
-      path: '/api/interpreter',
+      hostname: OVERPASS_HOST,
+      path: OVERPASS_PATH,
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Content-Length': Buffer.byteLength(postData),
+        'Authorization': 'Basic ' + Buffer.from(OVERPASS_AUTH).toString('base64'),
       },
     };
 
-    console.log('  Querying Overpass API...');
+    console.log(`  Querying Overpass API (${OVERPASS_HOST})...`);
 
     const req = https.request(options, (res) => {
       let data = '';
@@ -486,9 +494,9 @@ async function main() {
       allComplexes.push(...result);
 
       // Rate limit for Overpass API
-      if (region !== Object.keys(REGIONS).slice(-1)[0]) {
-        console.log('  Waiting 5 seconds before next region...');
-        await sleep(5000);
+      if (OVERPASS_DELAY > 0 && region !== Object.keys(REGIONS).slice(-1)[0]) {
+        console.log(`  Waiting ${OVERPASS_DELAY}ms before next region...`);
+        await sleep(OVERPASS_DELAY);
       }
     }
   }

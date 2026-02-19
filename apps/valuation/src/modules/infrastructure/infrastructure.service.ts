@@ -29,38 +29,39 @@ interface OverpassElement {
 export class InfrastructureService {
   private readonly logger = new Logger(InfrastructureService.name);
 
-  private readonly overpassEndpoints = [
-    'https://overpass-api.de/api/interpreter',
-    'https://z.overpass-api.de/api/interpreter',
-    'https://overpass.kumi.systems/api/interpreter',
-  ];
+  private readonly overpassUrl: string;
+  private readonly overpassAuth: string | null;
 
   constructor(
     private readonly httpService: HttpService,
     @InjectRepository(UnifiedListing)
     private readonly listingRepository: Repository<UnifiedListing>,
-  ) {}
+  ) {
+    this.overpassUrl = process.env.OVERPASS_URL || 'https://overpass.atlanta.ua/api/interpreter';
+    this.overpassAuth = process.env.OVERPASS_AUTH || 'admin:kiTO28hgiADPRBEN';
+  }
 
   private async postOverpass(query: string, timeoutMs = 30000): Promise<any> {
-    let lastError: Error | null = null;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    };
 
-    for (const endpoint of this.overpassEndpoints) {
-      try {
-        const response = await firstValueFrom(
-          this.httpService.post(endpoint, query, {
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            timeout: timeoutMs,
-          }),
-        );
-        return response.data;
-      } catch (e) {
-        lastError = e as Error;
-        this.logger.warn(`Overpass endpoint failed: ${endpoint} (${lastError?.message})`);
-        continue;
-      }
+    if (this.overpassAuth) {
+      headers['Authorization'] = 'Basic ' + Buffer.from(this.overpassAuth).toString('base64');
     }
 
-    throw lastError ?? new Error('All Overpass endpoints failed');
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(this.overpassUrl, query, {
+          headers,
+          timeout: timeoutMs,
+        }),
+      );
+      return response.data;
+    } catch (e) {
+      this.logger.error(`Overpass request failed: ${this.overpassUrl} (${(e as Error)?.message})`);
+      throw e;
+    }
   }
 
   private haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -195,7 +196,7 @@ out center;`;
     });
   }
 
-  async processListingsBatch(batchSize = 100, delayMs = 1000): Promise<{ processed: number; updated: number }> {
+  async processListingsBatch(batchSize = 500, delayMs = 0): Promise<{ processed: number; updated: number }> {
     let processed = 0;
     let updated = 0;
     let offset = 0;
@@ -224,8 +225,7 @@ out center;`;
         }
         processed++;
 
-        // Rate limiting
-        if (processed % 10 === 0) {
+        if (delayMs > 0 && processed % 10 === 0) {
           await this.sleep(delayMs);
         }
       }

@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { Geo, Street, Topzone, ApartmentComplex, GeoTopzone, UnifiedListing, ValuationCache } from './entities';
+import { Geo, Street, Topzone, ApartmentComplex, GeoTopzone, UnifiedListing, ValuationCache, SourceIdMapping } from './entities';
 import { GeoRepository, StreetRepository } from './repositories';
 
-const entities = [Geo, Street, Topzone, ApartmentComplex, GeoTopzone, UnifiedListing, ValuationCache];
+const entities = [Geo, Street, Topzone, ApartmentComplex, GeoTopzone, UnifiedListing, ValuationCache, SourceIdMapping];
 const repositories = [GeoRepository, StreetRepository];
 
 @Module({

@@ -11,6 +11,7 @@ import { GeoSyncConsumer } from './consumers/geo-sync.consumer';
 import { PropertySyncConsumer } from './consumers/property-sync.consumer';
 import { VectorPropertyMapper } from './mappers/vector-property.mapper';
 import { AggregatorPropertyMapper } from './mappers/aggregator-property.mapper';
+import { Vector2PropertyMapper } from './mappers/vector2-property.mapper';
 import { ComplexMatcherService } from './services/complex-matcher.service';
 import { WebhookController } from './controllers/webhook.controller';
 
@@ -30,6 +31,7 @@ export class SyncModule {
       // Mappers
       VectorPropertyMapper,
       AggregatorPropertyMapper,
+      Vector2PropertyMapper,
       // Attribute mapping
       AttributeMapperService,
     ];

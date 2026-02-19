@@ -64,7 +64,6 @@ export class CommunicationsCriterion extends BaseCriterion {
   private normalizeCommName(name: string): string {
     const lower = name.trim().toLowerCase();
 
-    // Маппинг синонимов
     if (lower.includes('electr') || lower.includes('електр')) return 'electricity';
     if (lower.includes('water') || lower.includes('вод')) return 'water';
     if (lower.includes('gas') || lower.includes('газ')) return 'gas';

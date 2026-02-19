@@ -347,7 +347,7 @@ async function main() {
     process.exit(1);
   }
 
-  // Get total count
+  // Get total count (ALL records)
   const countResult = await dataSource.query(`
     SELECT COUNT(*) as count FROM aggregator_import
     WHERE lat != '' AND lng != ''
@@ -399,9 +399,10 @@ async function main() {
       let skipped = 0;
       let errors = 0;
 
+      const CONCURRENCY = 100;
       const listingsToUpsert: Partial<UnifiedListing>[] = [];
 
-      for (const item of properties) {
+      const processItem = async (item: ImportedProperty): Promise<Partial<UnifiedListing> | null> => {
         try {
           const attributes = parseJsonSafe(item.attributes);
           const primaryData = parseJsonSafe(item.primary_data);
@@ -409,10 +410,7 @@ async function main() {
           const lng = extractNumber(item.lng);
           const platform = item.realty_platform;
 
-          if (!lat || !lng) {
-            skipped++;
-            continue;
-          }
+          if (!lat || !lng) return null;
 
           let validGeoId: number | undefined = undefined;
           let validStreetId: number | undefined = undefined;
@@ -436,16 +434,10 @@ async function main() {
             streetResolvedByCoords++;
           }
 
-          if (!validGeoId) {
-            skipped++;
-            continue;
-          }
+          if (!validGeoId) return null;
 
           const sourceId = extractInteger(item.id);
-          if (!sourceId) {
-            skipped++;
-            continue;
-          }
+          if (!sourceId) return null;
 
           const description = parseJsonSafe(item.description);
           const mainParams = primaryData?.['main_params'] as Record<string, unknown> | undefined;
@@ -484,7 +476,7 @@ async function main() {
             return mapProjectType(attributes?.project) || (attributes?.houseType as string);
           })();
 
-          listingsToUpsert.push({
+          return {
             sourceType: SourceType.AGGREGATOR,
             sourceId,
             dealType: mapDealType(item.deal_type),
@@ -525,12 +517,27 @@ async function main() {
             publishedAt: item.created_at && item.created_at !== '' ? new Date(item.created_at) : undefined,
             deletedAt: item.deleted_at && item.deleted_at !== '' ? new Date(item.deleted_at) : undefined,
             syncedAt: new Date(),
-          });
+          };
         } catch (error) {
           if (errors < 5) {
             logger.error(`Failed to process property ${item.id || 'unknown'}: ${(error as Error).message}`);
           }
           errors++;
+          return null;
+        }
+      };
+
+      // Process in parallel chunks
+      for (let i = 0; i < properties.length; i += CONCURRENCY) {
+        const chunk = properties.slice(i, i + CONCURRENCY);
+        const results = await Promise.all(chunk.map(processItem));
+
+        for (const result of results) {
+          if (result !== null) {
+            listingsToUpsert.push(result);
+          } else {
+            skipped++;
+          }
         }
       }
 

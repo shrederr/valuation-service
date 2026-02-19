@@ -6,3 +6,4 @@ export * from './apartment-complex.entity';
 export * from './geo-topzone.entity';
 export * from './unified-listing.entity';
 export * from './valuation-cache.entity';
+export * from './source-id-mapping.entity';

@@ -43,3 +43,68 @@ output/
 
 # Backup files
 *.backup
+
+# Temp/analysis scripts (one-off utilities)
+scripts/_temp_*.js
+scripts/analyze-*.js
+scripts/audit-*.js
+scripts/check-*.js
+scripts/count-*.js
+scripts/debug-*.js
+scripts/deep-*.js
+scripts/find-*.js
+scripts/fix-*.js
+scripts/list-*.js
+scripts/get-*.js
+scripts/show-*.js
+scripts/summary-*.js
+scripts/final-*.js
+scripts/full-*.js
+scripts/verify-*.js
+scripts/apply-*.js
+scripts/build-*.js
+scripts/categorize-*.js
+scripts/cleanup-*.js
+scripts/compare-*.js
+scripts/create-*.js
+scripts/filter-*.js
+scripts/generate-*.js
+scripts/geocode-*.js
+scripts/fetch-*.js
+scripts/import-lun-*.js
+scripts/import-osm-*.js
+scripts/match-domria.js
+scripts/match-via-osm-id.ts
+scripts/merge-*.js
+scripts/patch-*.js
+scripts/postgis-match.js
+scripts/prepare-*.js
+scripts/review-*.js
+scripts/search-*.js
+scripts/smart-match.js
+scripts/test-*.js
+scripts/auto-classify-candidates.js
+scripts/fuzzy-match-complexes.ts
+
+# Script output files
+scripts/*.csv
+scripts/*.txt
+scripts/*.json
+scripts/web-found-coords.json
+
+# Temp data files
+data/null_street_source_ids.txt
+data/unmatched_streets.json
+data/vector2_*.csv
+
+# Temp DB files
+db/apartment_complexes_clean.json
+db/apartment_complexes_final.json
+db/approach1_filtered.json
+db/approach2_overpass.json
+
+# Docs (temp)
+docs/
+
+# Package lock (using yarn)
+package-lock.json

@@ -57,7 +57,7 @@ export abstract class BaseCriterion {
 
 // Веса согласно ТЗ (Оценка ликвидности.xlsx)
 export const LIQUIDITY_WEIGHTS = {
-  price: 0.20,           // Цена
+  price: 0.2, // Цена
   livingArea: 0.03,      // Жилая площадь (больше = лучше, min-max нормализация)
   exposureTime: 0.08,    // Среднее время экспозиции на рынке
   competition: 0.05,     // Соотношение спроса и предложения

@@ -9,9 +9,11 @@ import {
   VectorPropertyUnarchivedEventDto,
   AggregatorPropertyEventDto,
   AggregatorPropertyDeletedEventDto,
+  Vector2ObjectRow,
 } from '../dto';
 import { VectorPropertyMapper } from '../mappers/vector-property.mapper';
 import { AggregatorPropertyMapper } from '../mappers/aggregator-property.mapper';
+import { Vector2PropertyMapper } from '../mappers/vector2-property.mapper';
 import { InfrastructureService } from '../../infrastructure/infrastructure.service';
 
 @Injectable()
@@ -23,6 +25,7 @@ export class PropertySyncService {
     private readonly listingRepository: Repository<UnifiedListing>,
     private readonly vectorMapper: VectorPropertyMapper,
     private readonly aggregatorMapper: AggregatorPropertyMapper,
+    private readonly vector2Mapper: Vector2PropertyMapper,
     private readonly infrastructureService: InfrastructureService,
   ) {}
 
@@ -225,5 +228,75 @@ export class PropertySyncService {
       this.logger.error(`Failed to delete aggregator property ${data.id}`, error instanceof Error ? error.stack : undefined);
       throw error;
     }
+  }
+
+  // === Vector2 CRM Property Operations ===
+
+  async handleVector2PropertyUpsert(row: Vector2ObjectRow): Promise<void> {
+    try {
+      const mapped = this.vector2Mapper.mapToUnifiedListing(row);
+      const existing = await this.listingRepository.findOne({
+        where: {
+          sourceType: SourceType.VECTOR_CRM,
+          sourceId: row.id,
+        },
+      });
+
+      if (existing) {
+        const { geo, street, topzone, complex, ...updateData } = mapped;
+        const merged = this.listingRepository.merge(existing, updateData);
+        await this.listingRepository.save(merged);
+      } else {
+        const listing = this.listingRepository.create(mapped);
+        await this.listingRepository.save(listing);
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to upsert vector2 property ${row.id}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Batch upsert for vector2 objects — used during initial sync
+   * Processes in chunks to avoid memory issues
+   */
+  async handleVector2PropertyBatch(rows: Vector2ObjectRow[]): Promise<{ created: number; updated: number; errors: number }> {
+    let created = 0;
+    let updated = 0;
+    let errors = 0;
+
+    for (const row of rows) {
+      try {
+        const mapped = this.vector2Mapper.mapToUnifiedListing(row);
+        const existing = await this.listingRepository.findOne({
+          where: {
+            sourceType: SourceType.VECTOR_CRM,
+            sourceId: row.id,
+          },
+        });
+
+        if (existing) {
+          const { geo, street, topzone, complex, ...updateData } = mapped;
+          const merged = this.listingRepository.merge(existing, updateData);
+          await this.listingRepository.save(merged);
+          updated++;
+        } else {
+          const listing = this.listingRepository.create(mapped);
+          await this.listingRepository.save(listing);
+          created++;
+        }
+      } catch (error) {
+        errors++;
+        this.logger.warn(
+          `Failed to upsert vector2 property ${row.id}: ${error instanceof Error ? error.message : error}`,
+        );
+      }
+    }
+
+    this.logger.log(`Vector2 batch complete: created=${created}, updated=${updated}, errors=${errors}`);
+    return { created, updated, errors };
   }
 }

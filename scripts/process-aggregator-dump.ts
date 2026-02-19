@@ -769,13 +769,13 @@ async function main() {
     process.exit(1);
   }
 
-  // Get total count (ALL records with valid coordinates)
+  // Get total count (ACTIVE records with valid coordinates)
   const countResult = await dataSource.query(`
     SELECT COUNT(*) as count FROM aggregator_import
-    WHERE lat != '' AND lng != ''
+    WHERE lat != '' AND lng != '' AND is_active = 't'
   `);
   const totalCount = parseInt(countResult[0].count, 10);
-  logger.log(`Total records with coordinates: ${totalCount}`);
+  logger.log(`Total ACTIVE records with coordinates: ${totalCount}`);
 
   let totalSynced = 0;
   let totalSkipped = 0;
@@ -794,10 +794,10 @@ async function main() {
         break;
       }
 
-      // Fetch batch from import table (ALL records with coordinates)
+      // Fetch batch from import table (ACTIVE records with coordinates)
       const properties = await dataSource.query<ImportedProperty[]>(`
         SELECT * FROM aggregator_import
-        WHERE lat != '' AND lng != ''
+        WHERE lat != '' AND lng != '' AND is_active = 't'
         ORDER BY id
         LIMIT $1 OFFSET $2
       `, [batchSize, currentOffset]);
