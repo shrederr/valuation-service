@@ -5,6 +5,7 @@ import { RabbitMQModule } from '@libs/rabbitmq';
 import { AttributeMapperService } from '@libs/common';
 import { OsmModule } from '../osm/osm.module';
 import { InfrastructureModule } from '../infrastructure';
+import { ValuationModule } from '../valuation';
 import { GeoSyncService } from './services/geo-sync.service';
 import { PropertySyncService } from './services/property-sync.service';
 import { GeoSyncConsumer } from './consumers/geo-sync.consumer';
@@ -45,7 +46,7 @@ export class SyncModule {
 
     return {
       module: SyncModule,
-      imports: [ConfigModule, DatabaseModule, RabbitMQModule.forRoot(), OsmModule, InfrastructureModule],
+      imports: [ConfigModule, DatabaseModule, RabbitMQModule.forRoot(), OsmModule, InfrastructureModule, ValuationModule],
       controllers: [WebhookController],
       providers: [...baseProviders, ...consumerProviders],
       exports: [GeoSyncService, PropertySyncService, ComplexMatcherService],

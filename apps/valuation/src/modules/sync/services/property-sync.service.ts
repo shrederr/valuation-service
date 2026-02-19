@@ -234,7 +234,7 @@ export class PropertySyncService {
 
   // === Vector2 CRM Property Operations ===
 
-  async handleVector2PropertyUpsert(row: Vector2ObjectRow): Promise<void> {
+  async handleVector2PropertyUpsert(row: Vector2ObjectRow): Promise<string> {
     try {
       const idMappings = this.sourceIdMappingService.getMappings();
       const mapped = this.vector2Mapper.mapToUnifiedListing(row, idMappings);
@@ -249,9 +249,11 @@ export class PropertySyncService {
         const { geo, street, topzone, complex, ...updateData } = mapped;
         const merged = this.listingRepository.merge(existing, updateData);
         await this.listingRepository.save(merged);
+        return existing.id;
       } else {
         const listing = this.listingRepository.create(mapped);
         await this.listingRepository.save(listing);
+        return listing.id;
       }
     } catch (error) {
       this.logger.error(
