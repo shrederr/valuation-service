@@ -174,15 +174,20 @@ export class Vector2PropertyMapper {
 
   /**
    * Extracts price: uses rent_price for rent, price for sell
+   * Vector2 CRM stores prices in thousands (e.g. 50 = $50,000)
    */
   private getPrice(row: Vector2ObjectRow): number | null {
     const rentPrice = this.extractNumber(row.rent_price);
     const sellPrice = this.extractNumber(row.price);
 
+    let price: number | null;
     if (rentPrice && rentPrice > 0 && (!sellPrice || sellPrice === 0)) {
-      return rentPrice;
+      price = rentPrice;
+    } else {
+      price = sellPrice;
     }
-    return sellPrice;
+
+    return price ? price * 1000 : price;
   }
 
   // =========================================================
