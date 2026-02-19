@@ -13,6 +13,7 @@ import { VectorPropertyMapper } from './mappers/vector-property.mapper';
 import { AggregatorPropertyMapper } from './mappers/aggregator-property.mapper';
 import { Vector2PropertyMapper } from './mappers/vector2-property.mapper';
 import { ComplexMatcherService } from './services/complex-matcher.service';
+import { SourceIdMappingService } from './services/source-id-mapping.service';
 import { WebhookController } from './controllers/webhook.controller';
 
 const isRabbitMqEnabled = () => {
@@ -28,6 +29,7 @@ export class SyncModule {
       GeoSyncService,
       PropertySyncService,
       ComplexMatcherService,
+      SourceIdMappingService,
       // Mappers
       VectorPropertyMapper,
       AggregatorPropertyMapper,

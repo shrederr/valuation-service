@@ -15,6 +15,7 @@ import { VectorPropertyMapper } from '../mappers/vector-property.mapper';
 import { AggregatorPropertyMapper } from '../mappers/aggregator-property.mapper';
 import { Vector2PropertyMapper } from '../mappers/vector2-property.mapper';
 import { InfrastructureService } from '../../infrastructure/infrastructure.service';
+import { SourceIdMappingService } from './source-id-mapping.service';
 
 @Injectable()
 export class PropertySyncService {
@@ -27,6 +28,7 @@ export class PropertySyncService {
     private readonly aggregatorMapper: AggregatorPropertyMapper,
     private readonly vector2Mapper: Vector2PropertyMapper,
     private readonly infrastructureService: InfrastructureService,
+    private readonly sourceIdMappingService: SourceIdMappingService,
   ) {}
 
   // === Vector Property Operations ===
@@ -234,7 +236,8 @@ export class PropertySyncService {
 
   async handleVector2PropertyUpsert(row: Vector2ObjectRow): Promise<void> {
     try {
-      const mapped = this.vector2Mapper.mapToUnifiedListing(row);
+      const idMappings = this.sourceIdMappingService.getMappings();
+      const mapped = this.vector2Mapper.mapToUnifiedListing(row, idMappings);
       const existing = await this.listingRepository.findOne({
         where: {
           sourceType: SourceType.VECTOR_CRM,
@@ -259,6 +262,29 @@ export class PropertySyncService {
     }
   }
 
+  async handleVector2PropertyArchived(sourceId: number): Promise<void> {
+    try {
+      await this.listingRepository.update(
+        {
+          sourceType: SourceType.VECTOR_CRM,
+          sourceId,
+        },
+        {
+          isActive: false,
+          deletedAt: new Date(),
+          syncedAt: new Date(),
+        },
+      );
+      this.logger.log(`Vector2 property archived: ${sourceId}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to archive vector2 property ${sourceId}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      throw error;
+    }
+  }
+
   /**
    * Batch upsert for vector2 objects — used during initial sync
    * Processes in chunks to avoid memory issues
@@ -267,10 +293,11 @@ export class PropertySyncService {
     let created = 0;
     let updated = 0;
     let errors = 0;
+    const idMappings = this.sourceIdMappingService.getMappings();
 
     for (const row of rows) {
       try {
-        const mapped = this.vector2Mapper.mapToUnifiedListing(row);
+        const mapped = this.vector2Mapper.mapToUnifiedListing(row, idMappings);
         const existing = await this.listingRepository.findOne({
           where: {
             sourceType: SourceType.VECTOR_CRM,

@@ -12,13 +12,18 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { ApiTags, ApiOperation, ApiHeader, ApiBody, ApiResponse } from '@nestjs/swagger';
 import { PropertySyncService } from '../services/property-sync.service';
-import { VectorPropertyEventDto, VectorPropertyArchivedEventDto } from '../dto';
+import { VectorPropertyEventDto, VectorPropertyArchivedEventDto, Vector2ObjectRow } from '../dto';
 
 type PropertyEventType = 'created' | 'updated' | 'archived' | 'unarchived';
 
 interface WebhookPayload {
   event: PropertyEventType;
   data: VectorPropertyEventDto | VectorPropertyArchivedEventDto;
+}
+
+interface Vector2WebhookPayload {
+  event: 'created' | 'updated' | 'archived';
+  data: Vector2ObjectRow;
 }
 
 interface WebhookResponse {
@@ -96,6 +101,57 @@ export class WebhookController {
     } catch (error) {
       this.logger.error(
         `Webhook processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      throw error;
+    }
+  }
+
+  @Post('vector2/property')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Receive property events from vector2 CRM (vec.atlanta.ua)' })
+  @ApiHeader({ name: 'x-webhook-secret', required: false, description: 'Webhook authentication secret' })
+  @ApiBody({ description: 'Vector2 property event payload' })
+  @ApiResponse({ status: 200, description: 'Event processed successfully' })
+  @ApiResponse({ status: 401, description: 'Invalid webhook secret' })
+  @ApiResponse({ status: 400, description: 'Invalid payload' })
+  async handleVector2PropertyWebhook(
+    @Headers('x-webhook-secret') secret: string,
+    @Body() payload: Vector2WebhookPayload,
+  ): Promise<WebhookResponse> {
+    if (this.webhookSecret && secret !== this.webhookSecret) {
+      this.logger.warn('Vector2 webhook request rejected: invalid secret');
+      throw new UnauthorizedException('Invalid webhook secret');
+    }
+
+    if (!payload || !payload.event || !payload.data) {
+      throw new BadRequestException('Invalid payload: missing event or data');
+    }
+
+    if (!payload.data.id) {
+      throw new BadRequestException('Invalid payload: missing property id');
+    }
+
+    this.logger.log(`Received vector2 webhook: ${payload.event} for property ${payload.data.id}`);
+
+    try {
+      switch (payload.event) {
+        case 'created':
+        case 'updated':
+          await this.propertySyncService.handleVector2PropertyUpsert(payload.data);
+          break;
+        case 'archived':
+          await this.propertySyncService.handleVector2PropertyArchived(payload.data.id);
+          break;
+        default:
+          throw new BadRequestException(`Unknown event type: ${payload.event}`);
+      }
+
+      this.logger.log(`Vector2 webhook processed: ${payload.event} for property ${payload.data.id}`);
+      return { success: true };
+    } catch (error) {
+      this.logger.error(
+        `Vector2 webhook failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
         error instanceof Error ? error.stack : undefined,
       );
       throw error;
