@@ -13,7 +13,7 @@ export class ValuationController {
   @Get(':id/full')
   @ApiOperation({ summary: 'Get full valuation report for a listing' })
   @ApiParam({ name: 'id', description: 'Listing UUID or sourceId' })
-  @ApiQuery({ name: 'source', enum: ['vector', 'aggregator'], required: false })
+  @ApiQuery({ name: 'source', enum: ['vector', 'aggregator', 'vector_crm'], required: false })
   @ApiQuery({ name: 'refresh', type: Boolean, required: false, description: 'Force refresh cache' })
   @ApiResponse({ status: 200, description: 'Full valuation report', type: ValuationReportDto })
   @ApiResponse({ status: 404, description: 'Listing not found' })
@@ -40,7 +40,7 @@ export class ValuationController {
       });
     }
 
-    // Auto mode: try aggregator first (most objects), then vector
+    // Auto mode: try aggregator first (most objects), then vector, then vector_crm
     try {
       return await this.valuationService.getFullReport({
         sourceType: SourceType.AGGREGATOR,
@@ -48,12 +48,19 @@ export class ValuationController {
         forceRefresh,
       });
     } catch {
-      // If not found in aggregator, try vector
-      return this.valuationService.getFullReport({
-        sourceType: SourceType.VECTOR,
-        sourceId,
-        forceRefresh,
-      });
+      try {
+        return await this.valuationService.getFullReport({
+          sourceType: SourceType.VECTOR,
+          sourceId,
+          forceRefresh,
+        });
+      } catch {
+        return this.valuationService.getFullReport({
+          sourceType: SourceType.VECTOR_CRM,
+          sourceId,
+          forceRefresh,
+        });
+      }
     }
   }
 }

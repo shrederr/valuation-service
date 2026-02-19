@@ -13,7 +13,7 @@ export class LiquidityController {
   @Get(':id/liquidity')
   @ApiOperation({ summary: 'Calculate liquidity score for a listing' })
   @ApiParam({ name: 'id', description: 'Listing UUID or sourceId' })
-  @ApiQuery({ name: 'source', enum: ['vector', 'aggregator'], required: false })
+  @ApiQuery({ name: 'source', enum: ['vector', 'aggregator', 'vector_crm'], required: false })
   @ApiResponse({ status: 200, description: 'Liquidity calculated', type: LiquidityDto })
   @ApiResponse({ status: 404, description: 'Listing not found' })
   public async calculateLiquidity(

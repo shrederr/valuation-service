@@ -13,7 +13,7 @@ export class AnalogsController {
   @Get(':id/analogs')
   @ApiOperation({ summary: 'Find analogs for a listing' })
   @ApiParam({ name: 'id', description: 'Listing UUID or sourceId' })
-  @ApiQuery({ name: 'source', enum: ['vector', 'aggregator'], required: false })
+  @ApiQuery({ name: 'source', enum: ['vector', 'aggregator', 'vector_crm'], required: false })
   @ApiQuery({ name: 'limit', type: Number, required: false, description: 'Max analogs to return' })
   @ApiResponse({ status: 200, description: 'Analogs found', type: AnalogSearchResultDto })
   @ApiResponse({ status: 404, description: 'Listing not found' })

@@ -13,7 +13,7 @@ export class FairPriceController {
   @Get(':id/fair-price')
   @ApiOperation({ summary: 'Calculate fair price for a listing' })
   @ApiParam({ name: 'id', description: 'Listing UUID or sourceId' })
-  @ApiQuery({ name: 'source', enum: ['vector', 'aggregator'], required: false })
+  @ApiQuery({ name: 'source', enum: ['vector', 'aggregator', 'vector_crm'], required: false })
   @ApiResponse({ status: 200, description: 'Fair price calculated', type: FairPriceDto })
   @ApiResponse({ status: 404, description: 'Listing not found' })
   public async calculateFairPrice(
