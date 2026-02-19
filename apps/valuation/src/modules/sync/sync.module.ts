@@ -15,6 +15,7 @@ import { AggregatorPropertyMapper } from './mappers/aggregator-property.mapper';
 import { Vector2PropertyMapper } from './mappers/vector2-property.mapper';
 import { ComplexMatcherService } from './services/complex-matcher.service';
 import { SourceIdMappingService } from './services/source-id-mapping.service';
+import { CurrencyService } from './services/currency.service';
 import { WebhookController } from './controllers/webhook.controller';
 
 const isRabbitMqEnabled = () => {
@@ -31,6 +32,7 @@ export class SyncModule {
       PropertySyncService,
       ComplexMatcherService,
       SourceIdMappingService,
+      CurrencyService,
       // Mappers
       VectorPropertyMapper,
       AggregatorPropertyMapper,

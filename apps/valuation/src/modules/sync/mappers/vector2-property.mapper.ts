@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import {
   SourceType,
   DealType,
@@ -23,6 +23,7 @@ import {
 } from '@libs/common';
 import { UnifiedListing } from '@libs/database';
 import { Vector2ObjectRow } from '../dto';
+import { CurrencyService } from '../services/currency.service';
 
 /**
  * ID resolution maps: vector2 IDs → our local DB IDs
@@ -37,6 +38,8 @@ export interface Vector2IdMappings {
 @Injectable()
 export class Vector2PropertyMapper {
   private readonly logger = new Logger(Vector2PropertyMapper.name);
+
+  constructor(@Optional() private readonly currencyService?: CurrencyService) {}
 
   /**
    * Maps a row from vector2.object table to UnifiedListing
@@ -67,7 +70,12 @@ export class Vector2PropertyMapper {
     const heatingType = this.mapDict(attrs.heating_type, VECTOR2_HEATING_TYPE_MAP);
 
     // Currency from currency_json or attributes_data
-    const currency = this.extractCurrency(row, attrs);
+    const originalCurrency = this.extractCurrency(row, attrs);
+
+    // Convert to USD: all vector2 prices are stored in the original currency
+    const priceUsd = price && this.currencyService
+      ? this.currencyService.toUsd(price, originalCurrency)
+      : price;
 
     // Build enriched attributes for storage
     const enrichedAttributes = this.buildEnrichedAttributes(attrs);
@@ -90,9 +98,9 @@ export class Vector2PropertyMapper {
       complexId: this.resolveComplexId(attrs.geo_zk, idMappings) || undefined,
       lat: lat ?? undefined,
       lng: lng ?? undefined,
-      price: price ?? undefined,
-      currency,
-      pricePerMeter: totalArea && price ? price / totalArea : undefined,
+      price: priceUsd ?? undefined,
+      currency: 'USD',
+      pricePerMeter: totalArea && priceUsd ? priceUsd / totalArea : undefined,
       totalArea: totalArea ?? undefined,
       livingArea: livingArea ?? undefined,
       kitchenArea: kitchenArea ?? undefined,
