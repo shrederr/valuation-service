@@ -123,7 +123,12 @@ function init() {
   // Check URL params
   const params = new URLSearchParams(window.location.search);
   const id = params.get('id');
+  const source = params.get('source');
   const url = params.get('url');
+
+  if (source) {
+    elements.sourceType.value = source;
+  }
 
   if (id) {
     elements.objectId.value = id;
