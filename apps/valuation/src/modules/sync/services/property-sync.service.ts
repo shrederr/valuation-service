@@ -65,6 +65,9 @@ export class PropertySyncService {
         const mapped = this.vectorMapper.mapToUnifiedListing(data);
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { geo, street, topzone, complex, topzoneId, complexId, ...updateData } = mapped;
+        if (existing.deletedAt) {
+          (updateData as any).deletedAt = null;
+        }
         const merged = this.listingRepository.merge(existing, updateData);
         await this.listingRepository.save(merged);
         this.logger.log(`Vector property updated: ${data.id}`);
@@ -188,6 +191,10 @@ export class PropertySyncService {
         // Strip TypeORM relation objects but keep resolved IDs
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { geo, street, topzone, complex, topzoneId, ...updateData } = result.listing;
+        // Clear deletedAt if object is active again
+        if (data.isActive && existing.deletedAt) {
+          (updateData as any).deletedAt = null;
+        }
         const merged = this.listingRepository.merge(existing, updateData);
         await this.listingRepository.save(merged);
         this.logger.log(
