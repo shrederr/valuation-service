@@ -176,11 +176,6 @@ function init() {
     if (e.key === 'Enter') handleSearch();
   });
 
-  // Close tooltip on Escape
-  document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeCriterionTooltip();
-  });
-
   // Check URL params
   const params = new URLSearchParams(window.location.search);
   const id = params.get('id');
@@ -440,66 +435,52 @@ function displayCriteria(criteria) {
 
   elements.criteriaGrid.innerHTML = html;
 
-  // Attach tooltip click handlers
+  // Attach tooltip hover handlers
   elements.criteriaGrid.querySelectorAll('.criterion-tooltip-icon').forEach(icon => {
-    icon.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const criterionKey = icon.dataset.criterion;
-      const tooltip = translations.criteriaTooltips[criterionKey];
-      if (!tooltip) return;
-      showCriterionTooltip(icon, criterionKey, tooltip);
+    const criterionKey = icon.dataset.criterion;
+    const tooltip = translations.criteriaTooltips[criterionKey];
+    if (!tooltip) return;
+
+    let tooltipEl = null;
+    let hideTimeout = null;
+
+    icon.addEventListener('mouseenter', () => {
+      clearTimeout(hideTimeout);
+      if (tooltipEl) return;
+
+      const criterionItem = icon.closest('.criterion-item');
+      if (!criterionItem) return;
+
+      const dynamicExample = buildDynamicExample(criterionKey);
+      const exampleText = dynamicExample || tooltip.example;
+
+      tooltipEl = document.createElement('div');
+      tooltipEl.className = 'criterion-hover-tooltip';
+      tooltipEl.innerHTML = `
+        <div class="tooltip-section">
+          <div class="tooltip-section-title">Формула</div>
+          <pre class="tooltip-formula">${escapeHtml(tooltip.formula)}</pre>
+        </div>
+        <div class="tooltip-section">
+          <div class="tooltip-section-title">${dynamicExample ? 'Ваш об\'єкт' : 'Приклад'}</div>
+          <pre class="tooltip-example">${escapeHtml(exampleText)}</pre>
+        </div>
+      `;
+      criterionItem.appendChild(tooltipEl);
+      requestAnimationFrame(() => tooltipEl && tooltipEl.classList.add('visible'));
+    });
+
+    icon.addEventListener('mouseleave', () => {
+      hideTimeout = setTimeout(() => {
+        if (tooltipEl) {
+          tooltipEl.remove();
+          tooltipEl = null;
+        }
+      }, 150);
     });
   });
 }
 
-function showCriterionTooltip(anchorEl, criterionKey, tooltip) {
-  // Remove any existing tooltip
-  closeCriterionTooltip();
-
-  // Build dynamic example from real data, fall back to static
-  const dynamicExample = buildDynamicExample(criterionKey);
-  const exampleText = dynamicExample || tooltip.example;
-
-  const overlay = document.createElement('div');
-  overlay.className = 'criterion-tooltip-overlay';
-  overlay.addEventListener('click', closeCriterionTooltip);
-
-  const popup = document.createElement('div');
-  popup.className = 'criterion-tooltip-popup';
-  popup.innerHTML = `
-    <div class="tooltip-close" onclick="closeCriterionTooltip()">&times;</div>
-    <div class="tooltip-section">
-      <div class="tooltip-section-title">Формула</div>
-      <pre class="tooltip-formula">${escapeHtml(tooltip.formula)}</pre>
-    </div>
-    <div class="tooltip-section">
-      <div class="tooltip-section-title">${dynamicExample ? 'Ваш об\'єкт' : 'Приклад'}</div>
-      <pre class="tooltip-example">${escapeHtml(exampleText)}</pre>
-    </div>
-  `;
-
-  document.body.appendChild(overlay);
-  document.body.appendChild(popup);
-
-  // Position popup near the icon
-  const rect = anchorEl.getBoundingClientRect();
-  const popupRect = popup.getBoundingClientRect();
-
-  let top = rect.bottom + 8;
-  let left = rect.left - popupRect.width / 2 + rect.width / 2;
-
-  // Keep within viewport
-  if (left < 8) left = 8;
-  if (left + popupRect.width > window.innerWidth - 8) {
-    left = window.innerWidth - popupRect.width - 8;
-  }
-  if (top + popupRect.height > window.innerHeight - 8) {
-    top = rect.top - popupRect.height - 8;
-  }
-
-  popup.style.top = `${top}px`;
-  popup.style.left = `${left}px`;
-}
 
 function buildDynamicExample(criterionName) {
   if (!currentReportData) return null;
@@ -611,12 +592,6 @@ function buildDynamicExample(criterionName) {
   }
 }
 
-function closeCriterionTooltip() {
-  const overlay = document.querySelector('.criterion-tooltip-overlay');
-  const popup = document.querySelector('.criterion-tooltip-popup');
-  if (overlay) overlay.remove();
-  if (popup) popup.remove();
-}
 
 function escapeHtml(text) {
   const div = document.createElement('div');
