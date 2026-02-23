@@ -1,11 +1,15 @@
 import { Injectable } from '@nestjs/common';
+import { UnifiedListing } from '@libs/database';
 
 import { BaseCriterion, CriterionResult, CriterionContext, LIQUIDITY_WEIGHTS } from './base.criterion';
 
 /**
- * Критерий "Жилая площадь" — заменяет pricePerMeter.
- * По ТЗ: "больше лучше" — min-max нормализация площади в пуле аналогов.
- * Вес: 0.03
+ * Критерій "Площа" — min-max нормалізація площі серед аналогів.
+ * По ТЗ: S = 10 * (x - xmin) / (xmax - xmin), "більше краще", 0-10.
+ * Якщо xmin == xmax → S = 10.
+ *
+ * Для всіх платформ використовуємо totalArea (загальна площа).
+ * Для ділянок (area) — landArea.
  */
 @Injectable()
 export class LivingAreaCriterion extends BaseCriterion {
@@ -15,9 +19,9 @@ export class LivingAreaCriterion extends BaseCriterion {
   public evaluate(context: CriterionContext): CriterionResult {
     const { subject, analogs } = context;
 
-    const subjectArea = Number(subject.totalArea) || 0;
+    const subjectArea = this.getAreaValue(subject);
 
-    if (subjectArea === 0) {
+    if (!subjectArea || subjectArea === 0) {
       return this.createNullResult('Немає даних про площу об\'єкта');
     }
 
@@ -25,10 +29,9 @@ export class LivingAreaCriterion extends BaseCriterion {
       return this.createNullResult('Немає аналогів для порівняння площі');
     }
 
-    // Собираем площади аналогов
     const areas = analogs
-      .map((a) => Number(a.totalArea) || 0)
-      .filter((a) => a > 0);
+      .map(a => this.getAreaValue(a))
+      .filter((a): a is number => a !== null && a > 0);
 
     if (areas.length === 0) {
       return this.createNullResult('Аналоги не мають даних про площу');
@@ -41,15 +44,12 @@ export class LivingAreaCriterion extends BaseCriterion {
     let explanation: string;
 
     if (maxArea === minArea) {
-      // Все аналоги одинаковой площади
-      score = 5;
+      score = 10;
       explanation = `Площа ${subjectArea} м² — аналоги мають однакову площу (${minArea} м²)`;
     } else {
-      // Min-max нормализация: больше площадь = лучше
       const normalized = (subjectArea - minArea) / (maxArea - minArea);
-      // Ограничиваем от 0 до 1 (объект может быть за пределами диапазона аналогов)
       const clamped = Math.max(0, Math.min(1, normalized));
-      score = 2 + clamped * 8; // от 2 до 10
+      score = 10 * clamped;
 
       if (clamped >= 0.7) {
         explanation = `Площа ${subjectArea} м² — більше за більшість аналогів (${minArea}-${maxArea} м²)`;
@@ -61,5 +61,15 @@ export class LivingAreaCriterion extends BaseCriterion {
     }
 
     return this.createResult(score, explanation);
+  }
+
+  /**
+   * Для ділянок — landArea, для решти — totalArea (загальна площа).
+   */
+  private getAreaValue(listing: UnifiedListing): number | null {
+    if (listing.realtyType === 'area') {
+      return Number(listing.landArea) || null;
+    }
+    return Number(listing.totalArea) || null;
   }
 }

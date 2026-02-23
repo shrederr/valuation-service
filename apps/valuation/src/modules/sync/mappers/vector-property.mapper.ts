@@ -15,6 +15,16 @@ export class VectorPropertyMapper {
     // vector-api uses 'square_total' for total area
     const totalArea = this.extractNumber(data.attributes?.square_total);
 
+    // Land area: vector stores in sotki (сотки), convert to m² (1 сотка = 100 м²)
+    const landAreaSotki = this.extractNumber(data.attributes?.square_land_total);
+    const landArea = landAreaSotki ? Math.round(landAreaSotki * 100 * 100) / 100 : null;
+
+    // Price per meter: for area/land use landArea, otherwise totalArea
+    const effectiveArea = (realtyType === RealtyType.Area && landArea) ? landArea : totalArea;
+    const pricePerMeter = effectiveArea && price
+      ? Math.round((price / effectiveArea) * 100) / 100
+      : undefined;
+
     return {
       sourceType: SourceType.VECTOR,
       sourceId: data.id,
@@ -33,12 +43,12 @@ export class VectorPropertyMapper {
       lng: data.lng || undefined,
       price: price ?? undefined,
       currency: (data.attributes?.currency as string) || 'USD',
-      pricePerMeter: totalArea && price ? price / totalArea : undefined,
+      pricePerMeter,
       totalArea: totalArea ?? undefined,
       // vector-api attribute keys mapping:
       livingArea: this.extractNumber(data.attributes?.square_living) ?? undefined,
       kitchenArea: this.extractNumber(data.attributes?.square_kitchen) ?? undefined,
-      landArea: this.extractNumber(data.attributes?.square_land_total) ?? undefined,
+      landArea: landArea ?? undefined,
       rooms: this.extractNumber(data.attributes?.rooms_count) ?? undefined,
       floor: this.extractNumber(data.attributes?.floor) ?? undefined,
       totalFloors: this.extractNumber(data.attributes?.floors_count) ?? undefined,

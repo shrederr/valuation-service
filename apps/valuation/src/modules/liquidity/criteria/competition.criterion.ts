@@ -16,30 +16,26 @@ export class CompetitionCriterion extends BaseCriterion {
 
     const analogsCount = fairPrice.analogsCount;
 
+    // Линейная интерполяция: ≤5 → 10, ≥50 → 0
     let score: number;
     let explanation: string;
 
     if (analogsCount <= 5) {
       score = 10;
-      explanation = `Низька конкуренція (${analogsCount} аналогів) - легше продати`;
-    } else if (analogsCount <= 10) {
-      score = 8;
-      explanation = `Помірна конкуренція (${analogsCount} аналогів)`;
-    } else if (analogsCount <= 15) {
-      score = 7;
-      explanation = `Середня конкуренція (${analogsCount} аналогів)`;
-    } else if (analogsCount <= 20) {
-      score = 6;
-      explanation = `Підвищена конкуренція (${analogsCount} аналогів)`;
-    } else if (analogsCount <= 30) {
-      score = 5;
-      explanation = `Висока конкуренція (${analogsCount} аналогів) - складніше виділитися`;
-    } else if (analogsCount <= 50) {
-      score = 4;
-      explanation = `Дуже висока конкуренція (${analogsCount} аналогів)`;
+      explanation = `Низька конкуренція (${analogsCount} аналогів) — легше продати`;
+    } else if (analogsCount >= 50) {
+      score = 0;
+      explanation = `Перенасичений ринок (${analogsCount} аналогів) — потрібна конкурентна ціна`;
     } else {
-      score = 3;
-      explanation = `Перенасичений ринок (${analogsCount} аналогів) - потрібна конкурентна ціна`;
+      // Линейная интерполяция между 5 и 50
+      score = 10 * (50 - analogsCount) / (50 - 5);
+      if (analogsCount <= 15) {
+        explanation = `Помірна конкуренція (${analogsCount} аналогів)`;
+      } else if (analogsCount <= 30) {
+        explanation = `Висока конкуренція (${analogsCount} аналогів)`;
+      } else {
+        explanation = `Дуже висока конкуренція (${analogsCount} аналогів)`;
+      }
     }
 
     return this.createResult(score, explanation);

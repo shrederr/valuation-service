@@ -3,7 +3,6 @@ export * from './liquidity.service';
 export * from './liquidity.controller';
 export * from './criteria/base.criterion';
 export * from './criteria/price.criterion';
-export * from './criteria/location.criterion';
 export * from './criteria/condition.criterion';
 export * from './criteria/format.criterion';
 export * from './criteria/floor.criterion';

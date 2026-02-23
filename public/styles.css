@@ -511,6 +511,105 @@ header h1 {
   font-style: italic;
 }
 
+/* Criterion Tooltip */
+.criterion-tooltip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 4px;
+  background: var(--gray-200);
+  color: var(--gray-500);
+  border-radius: 50%;
+  font-size: 0.65rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  vertical-align: middle;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.criterion-tooltip-icon:hover {
+  background: var(--primary);
+  color: white;
+}
+
+.criterion-tooltip-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 999;
+}
+
+.criterion-tooltip-popup {
+  position: fixed;
+  z-index: 1000;
+  background: white;
+  border-radius: var(--radius);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  padding: 1.25rem;
+  max-width: 420px;
+  min-width: 280px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.tooltip-close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  font-size: 1.25rem;
+  color: var(--gray-400);
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px;
+}
+
+.tooltip-close:hover {
+  color: var(--gray-700);
+}
+
+.tooltip-section {
+  margin-bottom: 1rem;
+}
+
+.tooltip-section:last-child {
+  margin-bottom: 0;
+}
+
+.tooltip-section-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--gray-400);
+  margin-bottom: 0.5rem;
+}
+
+.tooltip-formula,
+.tooltip-example {
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: 6px;
+  padding: 0.75rem;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--gray-700);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  overflow-x: auto;
+}
+
+.tooltip-example {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1e40af;
+}
+
 /* Recommendations */
 .recommendations {
   background: #eff6ff;

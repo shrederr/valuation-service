@@ -50,9 +50,17 @@ export class AggregatorPropertyMapper {
     const totalFloors = this.extractNumber(attrs.floors_count ?? attrs.totalFloors);
     const price = data.price;
 
-    // Price per meter: use existing value or calculate
+    // Land area: from attributes or parse from primaryData (sotki → m²)
+    const landAreaFromAttrs = this.extractNumber(attrs.landArea);
+    const landAreaFromPrimary = this.extractLandAreaFromPrimaryData(
+      data.realtyPlatform, data.primaryData,
+    );
+    const landArea = landAreaFromAttrs ?? landAreaFromPrimary;
+
+    // Price per meter: for area/land use landArea, otherwise totalArea
     const existingPricePerMeter = this.extractNumber(attrs.price_sqr ?? attrs.pricePerMeter);
-    const calculatedPricePerMeter = totalArea && price ? price / totalArea : null;
+    const effectiveArea = (realtyType === RealtyType.Area && landArea) ? landArea : totalArea;
+    const calculatedPricePerMeter = effectiveArea && price ? Math.round((price / effectiveArea) * 100) / 100 : null;
     const pricePerMeter = existingPricePerMeter ?? calculatedPricePerMeter;
 
     // Detect platform from realty_platform or URL
@@ -185,7 +193,7 @@ export class AggregatorPropertyMapper {
       totalArea: totalArea ?? undefined,
       livingArea: livingArea ?? undefined,
       kitchenArea: kitchenArea ?? undefined,
-      landArea: this.extractNumber(attrs.landArea) ?? undefined,
+      landArea: landArea ?? undefined,
       rooms: rooms ?? undefined,
       floor: floor ?? undefined,
       totalFloors: totalFloors ?? undefined,
@@ -312,6 +320,73 @@ export class AggregatorPropertyMapper {
       room: RealtyType.Room,
     };
     return mapping[normalized] || RealtyType.Apartment;
+  }
+
+  /**
+   * Извлекает площадь участка из primaryData (платформо-специфично).
+   * Все платформы хранят в сотках → конвертируем в м² (1 сотка = 100 м²).
+   */
+  private extractLandAreaFromPrimaryData(
+    platform: string | undefined,
+    primaryData: Record<string, unknown> | undefined,
+  ): number | null {
+    if (!primaryData) return null;
+
+    let sotki: number | null = null;
+
+    switch (platform) {
+      case 'olx': {
+        // params[key="land_area"].normalizedValue — "8.1" (сотки)
+        const params = primaryData.params;
+        if (Array.isArray(params)) {
+          const landParam = (params as Array<Record<string, unknown>>).find(
+            (p) => p.key === 'land_area',
+          );
+          if (landParam?.normalizedValue) {
+            sotki = this.extractNumber(landParam.normalizedValue);
+          }
+        }
+        break;
+      }
+      case 'domRia': {
+        // ares_count — числовое поле (сотки)
+        sotki = this.extractNumber(primaryData.ares_count);
+        break;
+      }
+      case 'realtorUa': {
+        // main_params.sqr — "4 сот", "14.7 сот"
+        const mainParams = primaryData.main_params as Record<string, unknown> | undefined;
+        if (mainParams?.sqr && typeof mainParams.sqr === 'string') {
+          sotki = parseFloat(mainParams.sqr.replace(/[^\d.,]/g, '').replace(',', '.'));
+          if (isNaN(sotki)) sotki = null;
+        }
+        break;
+      }
+      case 'realEstateLvivUa': {
+        // details["Площа ділянки"] — "6 соток"
+        const details = primaryData.details as Record<string, unknown> | undefined;
+        const areaStr = details?.['Площа ділянки'];
+        if (areaStr && typeof areaStr === 'string') {
+          sotki = parseFloat(areaStr.replace(/[^\d.,]/g, '').replace(',', '.'));
+          if (isNaN(sotki)) sotki = null;
+        }
+        break;
+      }
+      case 'mlsUkraine': {
+        // params["ploshcha_zemli_(sotok)"] — "21"
+        const params = primaryData.params as Record<string, unknown> | undefined;
+        if (params?.['ploshcha_zemli_(sotok)']) {
+          sotki = this.extractNumber(params['ploshcha_zemli_(sotok)']);
+        }
+        break;
+      }
+    }
+
+    if (sotki && sotki > 0) {
+      return Math.round(sotki * 100 * 100) / 100; // сотки → м², округление до 0.01
+    }
+
+    return null;
   }
 
   private extractNumber(value: unknown): number | null {

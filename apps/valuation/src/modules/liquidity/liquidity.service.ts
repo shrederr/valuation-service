@@ -11,7 +11,6 @@ import { AnalogsService } from '../analogs';
 import { PriceCriterion } from './criteria/price.criterion';
 import { LivingAreaCriterion } from './criteria/living-area.criterion';
 import { CompetitionCriterion } from './criteria/competition.criterion';
-import { LocationCriterion } from './criteria/location.criterion';
 import { ConditionCriterion } from './criteria/condition.criterion';
 import { FormatCriterion } from './criteria/format.criterion';
 import { FloorCriterion } from './criteria/floor.criterion';
@@ -42,7 +41,6 @@ export class LiquidityService {
     private readonly priceCriterion: PriceCriterion,
     private readonly livingAreaCriterion: LivingAreaCriterion,
     private readonly competitionCriterion: CompetitionCriterion,
-    private readonly locationCriterion: LocationCriterion,
     private readonly conditionCriterion: ConditionCriterion,
     private readonly formatCriterion: FormatCriterion,
     private readonly floorCriterion: FloorCriterion,
@@ -106,7 +104,6 @@ export class LiquidityService {
       this.livingAreaCriterion.evaluate(context),
       this.exposureTimeCriterion.evaluate(context),
       this.competitionCriterion.evaluate(context),
-      this.locationCriterion.evaluate(context),
       this.conditionCriterion.evaluate(context),
       this.formatCriterion.evaluate(context),
       this.floorCriterion.evaluate(context),

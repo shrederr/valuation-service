@@ -4,68 +4,66 @@ import { PrimaryDataExtractor } from '../services/primary-data-extractor';
 import { BaseCriterion, CriterionResult, CriterionContext, LIQUIDITY_WEIGHTS } from './base.criterion';
 
 /**
- * Критерий "Уникальные преимущества + Комфорт" (0.06).
- * Данные из OLX: param key="comfort", value="elevator,intercom,parking,balcony,closed_area,panoramic_windows..."
- *
- * Бонусы:
- * elevator: +1, parking: +1.5, balcony/loggia: +1, closed_area: +1.5,
- * intercom/video_intercom: +0.5, panoramic_windows: +1, conditioner: +0.5
- * other: +0.5 each (cap 2)
- * Score = min(10, 3 + sum_of_bonuses)
+ * Критерий "Уникальные преимущества" (0.06).
+ * По ТЗ: x = count(features), min-max нормализация среди аналогов:
+ * S = 10 * (x - xmin) / (xmax - xmin). Если xmin == xmax → S = 10.
  */
 @Injectable()
 export class UniqueFeaturesCriterion extends BaseCriterion {
   public readonly name = 'uniqueFeatures';
   public readonly weight = LIQUIDITY_WEIGHTS.uniqueFeatures;
 
-  private readonly FEATURE_SCORES: Record<string, number> = {
-    elevator: 1,
-    parking: 1.5,
-    balcony: 1,
-    loggia: 1,
-    closed_area: 1.5,
-    intercom: 0.5,
-    video_intercom: 0.5,
-    panoramic_windows: 1,
-    conditioner: 0.5,
-  };
-
   constructor(private readonly primaryDataExtractor: PrimaryDataExtractor) {
     super();
   }
 
   public evaluate(context: CriterionContext): CriterionResult {
-    const { subject } = context;
+    const { subject, analogs } = context;
 
-    const comfort = this.primaryDataExtractor.extractComfort(subject);
+    const subjectFeatures = this.primaryDataExtractor.extractComfort(subject);
+    const subjectCount = subjectFeatures ? subjectFeatures.length : 0;
 
-    if (!comfort) {
+    if (subjectCount === 0 && (!analogs || analogs.length === 0)) {
       return this.createNullResult('Немає даних про комфорт та переваги');
     }
 
-    let bonusSum = 0;
-    let otherBonus = 0;
-    const features: string[] = [];
+    // Min-max нормализация среди аналогов
+    if (analogs && analogs.length > 0) {
+      const analogCounts = analogs.map((a) => {
+        const features = this.primaryDataExtractor.extractComfort(a);
+        return features ? features.length : 0;
+      });
 
-    for (const item of comfort) {
-      const known = this.FEATURE_SCORES[item];
-      if (known !== undefined) {
-        bonusSum += known;
-        features.push(item);
+      const allCounts = [...analogCounts, subjectCount];
+      const xmin = Math.min(...allCounts);
+      const xmax = Math.max(...allCounts);
+
+      let score: number;
+      if (xmax === xmin) {
+        score = 10;
       } else {
-        otherBonus += 0.5;
+        const normalized = (subjectCount - xmin) / (xmax - xmin);
+        const clamped = Math.max(0, Math.min(1, normalized));
+        score = 10 * clamped;
       }
+
+      const explanation = subjectFeatures
+        ? `Переваги (${subjectCount}): ${subjectFeatures.join(', ')}`
+        : `Кількість переваг: ${subjectCount}`;
+
+      return this.createResult(score, explanation);
     }
 
-    // Cap other bonuses at 2
-    otherBonus = Math.min(2, otherBonus);
-    bonusSum += otherBonus;
+    // Fallback: без аналогов — оценка только по количеству
+    if (subjectCount === 0) {
+      return this.createResult(0, 'Немає додаткових переваг');
+    }
 
-    const score = Math.min(10, 3 + bonusSum);
-
-    const explanation = features.length > 0
-      ? `Переваги: ${features.join(', ')}`
-      : 'Є додаткові переваги';
+    // Простая шкала: каждая фича = ~1.5 балла, cap 10
+    const score = Math.min(10, subjectCount * 1.5);
+    const explanation = subjectFeatures
+      ? `Переваги (${subjectCount}): ${subjectFeatures.join(', ')}`
+      : `Кількість переваг: ${subjectCount}`;
 
     return this.createResult(score, explanation);
   }

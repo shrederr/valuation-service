@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
-import { BaseCriterion, CriterionResult, CriterionContext } from './base.criterion';
+import { BaseCriterion, CriterionResult, CriterionContext, LIQUIDITY_WEIGHTS } from './base.criterion';
 
 /**
  * Критерий "Поруч (інфраструктура)" согласно ТЗ (Оценка ликвидности.xlsx, row 38)
@@ -21,7 +21,7 @@ import { BaseCriterion, CriterionResult, CriterionContext } from './base.criteri
 @Injectable()
 export class InfrastructureCriterion extends BaseCriterion {
   public readonly name = 'infrastructure';
-  public readonly weight = 0.07;
+  public readonly weight = LIQUIDITY_WEIGHTS.infrastructure;
 
   // Пороговые расстояния в метрах
   private readonly DISTANCE_THRESHOLDS = {

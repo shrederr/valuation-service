@@ -5,7 +5,7 @@ import { BaseCriterion, CriterionResult, CriterionContext, LIQUIDITY_WEIGHTS } f
 
 /**
  * Критерий "Мебель и техника" (0.07).
- * Данные из OLX: param key="furnish", values: "Так"/"Ні"
+ * По ТЗ: Немає→0, Частково→5, Є→10
  */
 @Injectable()
 export class FurnitureCriterion extends BaseCriterion {
@@ -34,12 +34,12 @@ export class FurnitureCriterion extends BaseCriterion {
         explanation = 'Є меблі та техніка — підвищує ліквідність';
         break;
       case 'partial':
-        score = 7;
+        score = 5;
         explanation = 'Частково мебльовано';
         break;
       case 'no':
-        score = 4;
-        explanation = 'Без меблів — знижує ліквідність для покупців';
+        score = 0;
+        explanation = 'Без меблів — знижує ліквідність';
         break;
     }
 

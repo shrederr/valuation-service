@@ -53,7 +53,9 @@ export class Vector2PropertyMapper {
     const price = this.getPrice(row);
     const totalArea = this.extractNumber(row.square_total ?? attrs.square_total);
     const livingArea = this.extractNumber(row.square_living ?? attrs.square_living);
-    const landArea = this.extractNumber(row.square_land_total ?? attrs.square_land_total);
+    // Land area: vector2 stores in sotki (сотки), convert to m² (1 сотка = 100 м²)
+    const landAreaSotki = this.extractNumber(row.square_land_total ?? attrs.square_land_total);
+    const landArea = landAreaSotki ? Math.round(landAreaSotki * 100 * 100) / 100 : null;
     const kitchenArea = this.extractNumber(attrs.square_kitchen);
     const lat = this.extractNumber(row.map_x);
     const lng = this.extractNumber(row.map_y);
@@ -94,13 +96,16 @@ export class Vector2PropertyMapper {
       realtyType,
       geoId: (idMappings?.geo.get(row.fk_geo_id) ?? row.fk_geo_id) || undefined,
       streetId: (row.geo_street && idMappings ? idMappings.street.get(row.geo_street) : row.geo_street) || undefined,
-      topzoneId: row.fk_geotop_id || undefined,
+      topzoneId: undefined, // topzones table is empty, skip to avoid FK violation
       complexId: this.resolveComplexId(attrs.geo_zk, idMappings) || undefined,
       lat: lat ?? undefined,
       lng: lng ?? undefined,
       price: priceUsd ?? undefined,
       currency: 'USD',
-      pricePerMeter: totalArea && priceUsd ? priceUsd / totalArea : undefined,
+      pricePerMeter: (() => {
+        const effectiveArea = (realtyType === RealtyType.Area && landArea) ? landArea : totalArea;
+        return effectiveArea && priceUsd ? Math.round((priceUsd / effectiveArea) * 100) / 100 : undefined;
+      })(),
       totalArea: totalArea ?? undefined,
       livingArea: livingArea ?? undefined,
       kitchenArea: kitchenArea ?? undefined,

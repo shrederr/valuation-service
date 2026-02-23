@@ -10,7 +10,6 @@ import { LiquidityController } from './liquidity.controller';
 import { PriceCriterion } from './criteria/price.criterion';
 import { LivingAreaCriterion } from './criteria/living-area.criterion';
 import { CompetitionCriterion } from './criteria/competition.criterion';
-import { LocationCriterion } from './criteria/location.criterion';
 import { ConditionCriterion } from './criteria/condition.criterion';
 import { FormatCriterion } from './criteria/format.criterion';
 import { FloorCriterion } from './criteria/floor.criterion';
@@ -32,7 +31,6 @@ import { PrimaryDataExtractor } from './services/primary-data-extractor';
     PriceCriterion,
     LivingAreaCriterion,
     CompetitionCriterion,
-    LocationCriterion,
     ConditionCriterion,
     FormatCriterion,
     FloorCriterion,

@@ -80,7 +80,6 @@ const translations = {
     livingArea: 'Житлова площа',
     exposureTime: 'Час експозиції',
     competition: 'Конкуренція',
-    location: 'Локація',
     infrastructure: 'Інфраструктура',
     condition: 'Стан',
     format: 'Формат',
@@ -90,6 +89,60 @@ const translations = {
     communications: 'Комунікації',
     uniqueFeatures: 'Унікальні переваги',
     buyConditions: 'Умови купівлі',
+  },
+  criteriaTooltips: {
+    price: {
+      formula: 'Min-max нормалізація серед аналогів:\nS = 10 × (xmax - x) / (xmax - xmin)\n\n"Менше краще" — дешевший = вищий бал\nДіапазон: 0–10\n\nFallback (без аналогів):\n  ratio ≤ 0.85 → 10\n  ratio ≤ 0.95 → 8\n  ratio ≤ 1.05 → 6\n  ratio ≤ 1.15 → 4\n  ratio ≤ 1.30 → 2\n  ratio > 1.30 → 0',
+      example: 'Об\'єкт: $50,000, аналоги: $45,000–$80,000\nS = 10 × (80000 - 50000) / (80000 - 45000)\nS = 10 × 0.857 = 8.6',
+    },
+    livingArea: {
+      formula: 'S = 10 × (x - xmin) / (xmax - xmin)\n\n"Більше краще" — більша площа = вищий бал\nЯкщо xmin == xmax → S = 10\nДіапазон: 0–10\n\nOLX/MLS: totalArea (living_area відсутня)\nРешта: livingArea, fallback totalArea',
+      example: 'Об\'єкт: 65 м², аналоги: 40–90 м²\nS = 10 × (65-40)/(90-40) = 5.0',
+    },
+    exposureTime: {
+      formula: 'Базовий час (дні): квартира=30, дім=58,\nкомерція=51, ділянка=68\n\nМножник ціни:\n  дешевше → ×0.6, в ринку → ×1.0, дорожче → ×1.5\n\nratio = оцінка / медіана ринку\n  ≤0.5→10, ≤0.8→8, ≤1.0→6, ≤1.2→4, ≤1.5→2, >1.5→0\n\nFallback: дешево→10, в ринку→5, дорого→0',
+      example: 'Квартира, ціна в ринку:\nоцінка = 30 × 1.0 = 30 днів\nмедіана = 35 днів, ratio = 0.86 → бал 8',
+    },
+    competition: {
+      formula: 'Лінійна інтерполяція:\n  ≤ 5 аналогів → 10\n  ≥ 50 аналогів → 0\n  Між 5–50: S = 10 × (50 - count) / 45\n\nМенше конкурентів = легше продати\nДіапазон: 0–10',
+      example: '20 аналогів:\nS = 10 × (50-20)/45 = 6.7',
+    },
+    infrastructure: {
+      formula: 'Зважена оцінка відстаней до:\n  Транспорт — вага 30%\n  Школа — вага 25%\n  Супермаркет — вага 20%\n  Лікарня — вага 15%\n  Парковка — вага 10%\n\nОцінка відстані:\n  0–300м → 9–10\n  300–500м → 7–9\n  500–800м → 5–7\n  800–1200м → 3–5\n  > 1200м → 1–3',
+      example: 'Транспорт 200м (9.3), школа 400м (8.2),\nсупермаркет 100м (9.7), лікарня 900м (4.5)\nбал = (9.3×0.30 + 8.2×0.25 + 9.7×0.20\n       + 4.5×0.15) / 0.90 = 8.2',
+    },
+    condition: {
+      formula: 'Стан об\'єкта → бал (0–10):\n  аварійний → 0\n  потребує ремонту → 1\n  без ремонту → 1\n  чорнова штукатурка → 2\n  після будівельників → 3\n  косметичний → 5\n  задовільний → 6\n  хороший/житловий → 7\n  євроремонт → 9\n  дизайнерський → 10\n\nDomRia: characteristics_values[516]\nRealtorUa: main_params.status\nVector: condition_type',
+      example: 'Стан: "Євроремонт" → бал 9',
+    },
+    format: {
+      formula: 'Планування (якщо є дані):\n  студія → 10, кухня-вітальня → 9\n  роздільне → 8, суміжно-роздільне → 6\n  суміжне → 4, пентхаус → 10\n\nFallback кімнати:\n  1-кімн → 10, 2-кімн → 8\n  3-кімн → 6, 4-кімн → 4, 5+ → 2',
+      example: '2-кімнатна, планування "Роздільне" → бал 8',
+    },
+    floor: {
+      formula: 'Квартира (0–10):\n  1-й поверх → 0\n  останній поверх → 0\n  2-й поверх → 5\n  високий (> 80%) → 8\n  3-й до передостаннього → 10\n\nДім/ділянка: не застосовується\nКомерція: 1-й поверх → 10 (перевага)',
+      example: 'Квартира, поверх 4 з 9 → бал 10\nКомерція, 1 поверх → бал 10',
+    },
+    houseType: {
+      formula: 'Тип будинку → бал (0–10):\n  хрущовка → 1\n  старий фонд → 3\n  панельний → 4\n  блочний/газоблок → 6\n  каркасний → 7\n  цегла → 8\n  моноліт → 10\n  не розпізнано → 5',
+      example: 'Тип: "Цегляний" → бал 8',
+    },
+    furniture: {
+      formula: 'Наявність меблів (0–10):\n  Немає → 0\n  Частково → 5\n  Є → 10\n\nДжерело: OLX "furnish"\nабо Vector2 attributes.furniture',
+      example: 'Меблі: "Так" → бал 10',
+    },
+    communications: {
+      formula: 'Квартира (base=3: електрика+опалення+вода):\n  інтернет+2, гаряча вода+2, газ+3\n  макс 10\n\nДім/комерція:\n  водопровід+1.5, септик+1, інтернет+0.5,\n  каналізація+1.5, колодязь+1, свердловина+1,\n  газ+1.5, електрика+1.5\n\nS = min(10, сума)\nПри відсутності даних: квартира→3, інше→null',
+      example: 'Квартира: base(3) + газ(3) + інтернет(2) = 8',
+    },
+    uniqueFeatures: {
+      formula: 'x = кількість переваг (comfort-теги)\nMin-max серед аналогів:\nS = 10 × (x - xmin) / (xmax - xmin)\n\nЯкщо xmin == xmax → S = 10\nДіапазон: 0–10',
+      example: 'Об\'єкт: 4 переваги, аналоги: 1–6\nS = 10 × (4-1)/(6-1) = 6.0',
+    },
+    buyConditions: {
+      formula: 'Базовий бал = 0, додаються бонуси:\n  єОселя → +5\n  єВідновлення → +5\n  ДМЖ → +5\n  іпотека/кредит → +5\n  розстрочка → +5\n  переуступка → +3\n  без комісії → +4\n  торг → +2\n  обмін → +1\n\nS = min(10, сума)',
+      example: 'єОселя(+5) + торг(+2)\nбал = min(10, 0 + 7) = 7',
+    },
   },
   searchRadius: {
     building: 'Той самий будинок',
@@ -118,6 +171,11 @@ function init() {
   });
   elements.externalUrl.addEventListener('keypress', e => {
     if (e.key === 'Enter') handleSearch();
+  });
+
+  // Close tooltip on Escape
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeCriterionTooltip();
   });
 
   // Check URL params
@@ -336,11 +394,15 @@ function displayCriteria(criteria) {
   let html = evaluated.map(c => {
     const level = c.score >= 7 ? 'high' : c.score >= 5 ? 'medium' : 'low';
     const name = translations.criteria[c.name] || c.name;
+    const tooltip = translations.criteriaTooltips[c.name];
+    const tooltipIcon = tooltip
+      ? `<span class="criterion-tooltip-icon" data-criterion="${c.name}" title="Як розраховується">?</span>`
+      : '';
 
     return `
       <div class="criterion-item">
         <div class="criterion-header">
-          <span class="criterion-name">${name}</span>
+          <span class="criterion-name">${name}${tooltipIcon}</span>
           <span class="criterion-score ${level}">${c.score.toFixed(1)}</span>
         </div>
         <div class="criterion-bar">
@@ -354,10 +416,14 @@ function displayCriteria(criteria) {
   if (missing.length > 0) {
     html += missing.map(c => {
       const name = translations.criteria[c.name] || c.name;
+      const tooltip = translations.criteriaTooltips[c.name];
+      const tooltipIcon = tooltip
+        ? `<span class="criterion-tooltip-icon" data-criterion="${c.name}" title="Як розраховується">?</span>`
+        : '';
       return `
         <div class="criterion-item criterion-missing">
           <div class="criterion-header">
-            <span class="criterion-name">${name}</span>
+            <span class="criterion-name">${name}${tooltipIcon}</span>
             <span class="criterion-score missing">—</span>
           </div>
           <div class="criterion-explanation missing-text">${c.explanation || 'Немає даних'}</div>
@@ -367,6 +433,75 @@ function displayCriteria(criteria) {
   }
 
   elements.criteriaGrid.innerHTML = html;
+
+  // Attach tooltip click handlers
+  elements.criteriaGrid.querySelectorAll('.criterion-tooltip-icon').forEach(icon => {
+    icon.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const criterionKey = icon.dataset.criterion;
+      const tooltip = translations.criteriaTooltips[criterionKey];
+      if (!tooltip) return;
+      showCriterionTooltip(icon, tooltip);
+    });
+  });
+}
+
+function showCriterionTooltip(anchorEl, tooltip) {
+  // Remove any existing tooltip
+  closeCriterionTooltip();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'criterion-tooltip-overlay';
+  overlay.addEventListener('click', closeCriterionTooltip);
+
+  const popup = document.createElement('div');
+  popup.className = 'criterion-tooltip-popup';
+  popup.innerHTML = `
+    <div class="tooltip-close" onclick="closeCriterionTooltip()">&times;</div>
+    <div class="tooltip-section">
+      <div class="tooltip-section-title">Формула</div>
+      <pre class="tooltip-formula">${escapeHtml(tooltip.formula)}</pre>
+    </div>
+    <div class="tooltip-section">
+      <div class="tooltip-section-title">Приклад</div>
+      <pre class="tooltip-example">${escapeHtml(tooltip.example)}</pre>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+  document.body.appendChild(popup);
+
+  // Position popup near the icon
+  const rect = anchorEl.getBoundingClientRect();
+  const popupRect = popup.getBoundingClientRect();
+
+  let top = rect.bottom + 8;
+  let left = rect.left - popupRect.width / 2 + rect.width / 2;
+
+  // Keep within viewport
+  if (left < 8) left = 8;
+  if (left + popupRect.width > window.innerWidth - 8) {
+    left = window.innerWidth - popupRect.width - 8;
+  }
+  if (top + popupRect.height > window.innerHeight - 8) {
+    top = rect.top - popupRect.height - 8;
+  }
+
+  popup.style.top = `${top}px`;
+  popup.style.left = `${left}px`;
+}
+
+function closeCriterionTooltip() {
+  const overlay = document.querySelector('.criterion-tooltip-overlay');
+  const popup = document.querySelector('.criterion-tooltip-popup');
+  if (overlay) overlay.remove();
+  if (popup) popup.remove();
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 function displayRecommendations(recommendations) {

@@ -48,14 +48,17 @@ export class FairPriceService {
     const prices = analogs.map((a) => a.price).filter((p) => p > 0);
 
     // Рассчитываем цену за м² из цены и площади, если pricePerMeter не указана
+    // Фильтруем магическое значение 9999999999 (заглушка для участков без площади)
+    const MAX_REASONABLE_PRICE_PER_METER = 500000; // $500k/м² — разумный верхний предел
     const pricesPerMeter = analogs
       .map((a) => {
-        if (a.pricePerMeter && a.pricePerMeter > 0) {
+        if (a.pricePerMeter && a.pricePerMeter > 0 && a.pricePerMeter < MAX_REASONABLE_PRICE_PER_METER) {
           return a.pricePerMeter;
         }
         // Рассчитываем из цены и площади
         if (a.price > 0 && a.area && a.area > 0) {
-          return Math.round(a.price / a.area);
+          const calculated = Math.round(a.price / a.area);
+          return calculated < MAX_REASONABLE_PRICE_PER_METER ? calculated : 0;
         }
         return 0;
       })

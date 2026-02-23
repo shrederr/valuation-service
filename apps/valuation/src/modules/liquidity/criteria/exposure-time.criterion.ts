@@ -32,13 +32,13 @@ export class ExposureTimeCriterion extends BaseCriterion {
       return this.evaluateWithRealData(subject, fairPrice, exposureStats.medianDays, baseDays);
     }
 
-    // Fallback: оценка по вердикту fair price
+    // Fallback: оценка по вердикту fair price (0-10)
     return this.evaluateByVerdict(fairPrice, baseDays);
   }
 
   /**
    * Оценка на основе реальных данных экспозиции из БД.
-   * Сравниваем предполагаемое время продажи объекта с реальной медианой рынка.
+   * По ТЗ: S = 10 * (xmax - x) / (xmax - xmin) — "менше краще", 0-10
    */
   private evaluateWithRealData(
     subject: UnifiedListing,
@@ -46,7 +46,6 @@ export class ExposureTimeCriterion extends BaseCriterion {
     realMedianDays: number,
     baseDays: number,
   ): CriterionResult {
-    // Множитель на основе цены: дешевые продаются быстрее
     let priceMultiplier = 1.0;
     if (fairPrice.verdict === 'cheap') {
       priceMultiplier = 0.6;
@@ -57,21 +56,20 @@ export class ExposureTimeCriterion extends BaseCriterion {
     const subjectEstimate = baseDays * priceMultiplier;
     const ratio = subjectEstimate / realMedianDays;
 
+    // Шкала 0-10 на основе ratio
     let score: number;
     if (ratio <= 0.5) {
       score = 10;
     } else if (ratio <= 0.8) {
       score = 8;
     } else if (ratio <= 1.0) {
-      score = 7;
-    } else if (ratio <= 1.2) {
       score = 6;
+    } else if (ratio <= 1.2) {
+      score = 4;
     } else if (ratio <= 1.5) {
-      score = 5;
-    } else if (ratio <= 2.0) {
-      score = 3;
-    } else {
       score = 2;
+    } else {
+      score = 0;
     }
 
     const estimatedDays = Math.round(subjectEstimate);
@@ -81,7 +79,7 @@ export class ExposureTimeCriterion extends BaseCriterion {
   }
 
   /**
-   * Fallback: оценка по вердикту fair price (текущая логика).
+   * Fallback: оценка по вердикту fair price (0-10).
    */
   private evaluateByVerdict(
     fairPrice: { verdict: string },
@@ -91,14 +89,14 @@ export class ExposureTimeCriterion extends BaseCriterion {
     let explanation: string;
 
     if (fairPrice.verdict === 'cheap') {
-      score = 9;
+      score = 10;
       explanation = `Об'єкт продасться швидше за медіанний час (${medianDays} днів) через низьку ціну`;
     } else if (fairPrice.verdict === 'in_market') {
-      score = 6;
+      score = 5;
       explanation = `Орієнтовний час продажу близький до медіанного (${medianDays} днів)`;
     } else {
-      score = 3;
-      explanation = `Час продажу може перевищити медіанний (${medianDays} днів) через завищену ціну`;
+      score = 0;
+      explanation = `Час продажу може значно перевищити медіанний (${medianDays} днів) через завищену ціну`;
     }
 
     return this.createResult(score, explanation);
@@ -134,7 +132,6 @@ export class ExposureTimeCriterion extends BaseCriterion {
       .map((r) => {
         const exposure = r.exposure;
         if (!exposure) return null;
-        // exposure is interval, convert to days
         const days = exposure.days || 0;
         const hours = exposure.hours || 0;
         return days + hours / 24;
