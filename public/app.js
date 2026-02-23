@@ -435,52 +435,72 @@ function displayCriteria(criteria) {
 
   elements.criteriaGrid.innerHTML = html;
 
-  // Attach tooltip hover handlers
+  // Attach tooltip modal handlers
   elements.criteriaGrid.querySelectorAll('.criterion-tooltip-icon').forEach(icon => {
     const criterionKey = icon.dataset.criterion;
     const tooltip = translations.criteriaTooltips[criterionKey];
     if (!tooltip) return;
 
-    let tooltipEl = null;
-    let hideTimeout = null;
-
-    icon.addEventListener('mouseenter', () => {
-      clearTimeout(hideTimeout);
-      if (tooltipEl) return;
-
-      const criterionItem = icon.closest('.criterion-item');
-      if (!criterionItem) return;
-
+    icon.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const criterionName = translations.criteria[criterionKey] || criterionKey;
       const dynamicExample = buildDynamicExample(criterionKey);
       const exampleText = dynamicExample || tooltip.example;
 
-      tooltipEl = document.createElement('div');
-      tooltipEl.className = 'criterion-hover-tooltip';
-      tooltipEl.innerHTML = `
-        <div class="tooltip-section">
-          <div class="tooltip-section-title">Формула</div>
-          <pre class="tooltip-formula">${escapeHtml(tooltip.formula)}</pre>
-        </div>
-        <div class="tooltip-section">
-          <div class="tooltip-section-title">${dynamicExample ? 'Ваш об\'єкт' : 'Приклад'}</div>
-          <pre class="tooltip-example">${escapeHtml(exampleText)}</pre>
-        </div>
-      `;
-      criterionItem.appendChild(tooltipEl);
-      requestAnimationFrame(() => tooltipEl && tooltipEl.classList.add('visible'));
-    });
-
-    icon.addEventListener('mouseleave', () => {
-      hideTimeout = setTimeout(() => {
-        if (tooltipEl) {
-          tooltipEl.remove();
-          tooltipEl = null;
-        }
-      }, 150);
+      showCriterionModal(criterionName, tooltip.formula, exampleText, !!dynamicExample);
     });
   });
 }
 
+
+function showCriterionModal(title, formula, example, isDynamic) {
+  // Remove existing modal if any
+  closeCriterionModal();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'criterion-modal-overlay';
+  overlay.innerHTML = `
+    <div class="criterion-modal">
+      <div class="criterion-modal-header">
+        <span class="criterion-modal-title">${escapeHtml(title)}</span>
+        <button class="criterion-modal-close" aria-label="Закрити">&times;</button>
+      </div>
+      <div class="criterion-modal-body">
+        <div class="tooltip-section">
+          <div class="tooltip-section-title">Формула</div>
+          <pre class="tooltip-formula">${escapeHtml(formula)}</pre>
+        </div>
+        <div class="tooltip-section">
+          <div class="tooltip-section-title">${isDynamic ? 'Ваш об\'єкт' : 'Приклад'}</div>
+          <pre class="tooltip-example">${escapeHtml(example)}</pre>
+        </div>
+      </div>
+    </div>
+  `;
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) closeCriterionModal();
+  });
+  overlay.querySelector('.criterion-modal-close').addEventListener('click', closeCriterionModal);
+
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('visible'));
+
+  document.addEventListener('keydown', criterionModalEscHandler);
+}
+
+function criterionModalEscHandler(e) {
+  if (e.key === 'Escape') closeCriterionModal();
+}
+
+function closeCriterionModal() {
+  document.removeEventListener('keydown', criterionModalEscHandler);
+  const overlay = document.querySelector('.criterion-modal-overlay');
+  if (overlay) {
+    overlay.classList.remove('visible');
+    setTimeout(() => overlay.remove(), 150);
+  }
+}
 
 function buildDynamicExample(criterionName) {
   if (!currentReportData) return null;
