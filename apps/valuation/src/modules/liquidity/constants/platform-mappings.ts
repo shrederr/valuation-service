@@ -59,16 +59,36 @@ export const REAL_ESTATE_CONDITION_SCORE: Record<string, number> = {
 };
 
 /** vector_crm: attributes.condition_type → {text, score} */
+/**
+ * Vector2 CRM condition_type codes → liquidity scoring
+ * Source of truth: libs/common VECTOR2_CONDITION_TYPE_MAP
+ */
 export const VECTOR_CONDITION_TYPE_MAP: Record<number, { text: string; score: number }> = {
-  1: { text: 'Аварійний стан', score: 0 },
-  2: { text: 'Потребує капітального ремонту', score: 0 },
-  3: { text: 'Без ремонту', score: 1 },
-  4: { text: 'Потребує ремонту', score: 1 },
-  5: { text: 'Косметичний ремонт', score: 5 },
-  7: { text: 'Житловий стан', score: 7 },
-  20: { text: 'Після будівельників', score: 3 },
-  21: { text: 'Під чистову обробку', score: 2 },
-  22: { text: 'Під чистову обробку', score: 2 },
+  // Vector2 codes (1-24)
+  1: { text: 'Потрібен капітальний ремонт', score: 0 },
+  2: { text: 'Потрібен поточний ремонт', score: 1 },
+  3: { text: 'Потрібен косметичний ремонт', score: 1 },
+  4: { text: 'Після капремонту', score: 5 },
+  5: { text: 'Євроремонт', score: 9 },
+  6: { text: 'Будинок, що будується', score: 2 },
+  7: { text: 'Після будівельників', score: 3 },
+  8: { text: 'Після пожежі', score: 0 },
+  9: { text: 'Після повені', score: 0 },
+  10: { text: 'Стіни сирі', score: 0 },
+  11: { text: 'Під знос', score: 0 },
+  12: { text: 'Недобудоване', score: 1 },
+  13: { text: 'Нуль цикл', score: 1 },
+  14: { text: 'Будматеріали', score: 1 },
+  15: { text: 'Тільки документи', score: 0 },
+  16: { text: 'Дах потрібний ремонт', score: 1 },
+  17: { text: 'Потріб. капрем. та дах', score: 0 },
+  18: { text: 'Потріб. тек. рем. та дах', score: 1 },
+  19: { text: 'Потріб. космет. рем. та дах', score: 1 },
+  20: { text: 'Житлове чисте', score: 7 },
+  21: { text: 'Після косметики', score: 5 },
+  22: { text: 'Ремонт не потрібний', score: 7 },
+  24: { text: 'White Box', score: 2 },
+  // Legacy/extended codes (from older vector CRM data)
   69: { text: 'Хороший стан', score: 7 },
   81: { text: 'Євроремонт', score: 9 },
   97: { text: 'Косметичний ремонт', score: 5 },
