@@ -1,16 +1,22 @@
 import {
   Controller,
+  Get,
   Post,
+  Param,
   Body,
   Headers,
   HttpCode,
   HttpStatus,
   UnauthorizedException,
+  NotFoundException,
   Logger,
   BadRequestException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiTags, ApiOperation, ApiHeader, ApiBody, ApiResponse } from '@nestjs/swagger';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { UnifiedListing } from '@libs/database';
 import { PropertySyncService } from '../services/property-sync.service';
 import { VectorPropertyEventDto, VectorPropertyArchivedEventDto, Vector2ObjectRow } from '../dto';
 import { ValuationService } from '../../valuation/valuation.service';
@@ -43,6 +49,8 @@ export class WebhookController {
     private readonly propertySyncService: PropertySyncService,
     private readonly configService: ConfigService,
     private readonly valuationService: ValuationService,
+    @InjectRepository(UnifiedListing)
+    private readonly listingRepository: Repository<UnifiedListing>,
   ) {
     this.webhookSecret = this.configService.get<string>('WEBHOOK_SECRET');
     if (this.webhookSecret) {
@@ -186,6 +194,49 @@ export class WebhookController {
       sourceId: payload.data.id,
       listingId,
       syncedAt: new Date(),
+      liquidityScore,
+    };
+  }
+
+  @Get('vector2/property/:sourceId')
+  @ApiOperation({ summary: 'Get vector2 property by sourceId with liquidity score' })
+  @ApiResponse({ status: 200, description: 'Property found and evaluated' })
+  @ApiResponse({ status: 404, description: 'Property not found' })
+  async getVector2Property(
+    @Param('sourceId') sourceIdParam: string,
+  ): Promise<Record<string, unknown>> {
+    const sourceId = parseInt(sourceIdParam, 10);
+    if (isNaN(sourceId)) {
+      throw new BadRequestException('sourceId must be a number');
+    }
+
+    const listing = await this.listingRepository.findOne({
+      where: { sourceType: SourceType.VECTOR_CRM, sourceId },
+    });
+
+    if (!listing) {
+      throw new NotFoundException(`Vector2 property ${sourceId} not found`);
+    }
+
+    let liquidityScore: number | null = null;
+    try {
+      const report = await this.valuationService.getFullReport({
+        sourceType: SourceType.VECTOR_CRM,
+        sourceId,
+        forceRefresh: true,
+      });
+      liquidityScore = report.liquidity?.score ?? null;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.warn(`Valuation failed for vector2 ${sourceId}: ${msg}`);
+    }
+
+    return {
+      success: true,
+      event: 'lookup',
+      sourceId,
+      listingId: listing.id,
+      syncedAt: listing.syncedAt,
       liquidityScore,
     };
   }

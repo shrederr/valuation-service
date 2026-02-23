@@ -1,6 +1,9 @@
 // API Base URL
 const API_BASE = '/api/v1/valuation';
 
+// Current report data for dynamic tooltips
+let currentReportData = null;
+
 // DOM Elements
 const elements = {
   // Tabs
@@ -295,6 +298,9 @@ function hideResults() {
 }
 
 function displayResults(data) {
+  // Store for dynamic tooltips
+  currentReportData = data;
+
   // Property Info
   displayPropertyInfo(data.property);
 
@@ -441,14 +447,18 @@ function displayCriteria(criteria) {
       const criterionKey = icon.dataset.criterion;
       const tooltip = translations.criteriaTooltips[criterionKey];
       if (!tooltip) return;
-      showCriterionTooltip(icon, tooltip);
+      showCriterionTooltip(icon, criterionKey, tooltip);
     });
   });
 }
 
-function showCriterionTooltip(anchorEl, tooltip) {
+function showCriterionTooltip(anchorEl, criterionKey, tooltip) {
   // Remove any existing tooltip
   closeCriterionTooltip();
+
+  // Build dynamic example from real data, fall back to static
+  const dynamicExample = buildDynamicExample(criterionKey);
+  const exampleText = dynamicExample || tooltip.example;
 
   const overlay = document.createElement('div');
   overlay.className = 'criterion-tooltip-overlay';
@@ -463,8 +473,8 @@ function showCriterionTooltip(anchorEl, tooltip) {
       <pre class="tooltip-formula">${escapeHtml(tooltip.formula)}</pre>
     </div>
     <div class="tooltip-section">
-      <div class="tooltip-section-title">Приклад</div>
-      <pre class="tooltip-example">${escapeHtml(tooltip.example)}</pre>
+      <div class="tooltip-section-title">${dynamicExample ? 'Ваш об\'єкт' : 'Приклад'}</div>
+      <pre class="tooltip-example">${escapeHtml(exampleText)}</pre>
     </div>
   `;
 
@@ -489,6 +499,116 @@ function showCriterionTooltip(anchorEl, tooltip) {
 
   popup.style.top = `${top}px`;
   popup.style.left = `${left}px`;
+}
+
+function buildDynamicExample(criterionName) {
+  if (!currentReportData) return null;
+
+  const property = currentReportData.property;
+  const analogs = currentReportData.analogs?.analogs || [];
+  const liquidity = currentReportData.liquidity;
+  const criterion = liquidity?.criteria?.find(c => c.name === criterionName);
+  const score = criterion?.score;
+
+  if (score === undefined || score === null) return null;
+  const s = score.toFixed(1);
+
+  switch (criterionName) {
+    case 'price': {
+      const price = property?.askingPrice;
+      const prices = analogs.map(a => a.price).filter(p => p > 0).sort((a, b) => a - b);
+      if (!price || prices.length < 2) return null;
+      const min = prices[0];
+      const max = prices[prices.length - 1];
+      const calc = max !== min ? (10 * (max - price) / (max - min)).toFixed(1) : '10.0';
+      return `Ціна об'єкта: ${formatPrice(price)}\nАналоги: ${formatPrice(min)} – ${formatPrice(max)} (${prices.length} шт)\n\nS = 10 × (${formatPriceShort(max)} - ${formatPriceShort(price)}) / (${formatPriceShort(max)} - ${formatPriceShort(min)})\nS = ${calc}\n\nБал: ${s}`;
+    }
+    case 'livingArea': {
+      const area = property?.area;
+      const areas = analogs.map(a => a.area).filter(a => a > 0).sort((a, b) => a - b);
+      if (!area || areas.length < 2) return null;
+      const min = areas[0];
+      const max = areas[areas.length - 1];
+      const calc = max !== min ? (10 * (area - min) / (max - min)).toFixed(1) : '10.0';
+      return `Площа об'єкта: ${area} м²\nАналоги: ${min} – ${max} м² (${areas.length} шт)\n\nS = 10 × (${area} - ${min}) / (${max} - ${min})\nS = ${calc}\n\nБал: ${s}`;
+    }
+    case 'competition': {
+      const count = analogs.length;
+      let calc;
+      if (count <= 5) calc = '10.0';
+      else if (count >= 50) calc = '0.0';
+      else calc = (10 * (50 - count) / 45).toFixed(1);
+      return `Кількість аналогів: ${count}\n\nS = 10 × (50 - ${count}) / 45 = ${calc}\n\nБал: ${s}`;
+    }
+    case 'floor': {
+      const floor = property?.floor;
+      const totalFloors = property?.totalFloors;
+      if (!floor) return null;
+      let desc = '';
+      if (floor === 1) desc = '1-й поверх → 0 балів';
+      else if (floor === totalFloors) desc = `останній поверх (${floor}/${totalFloors}) → 0 балів`;
+      else if (floor === 2) desc = `2-й поверх з ${totalFloors || '?'} → 5 балів`;
+      else if (totalFloors && floor / totalFloors > 0.8) desc = `високий поверх (${floor}/${totalFloors}, ${Math.round(floor/totalFloors*100)}%) → 8 балів`;
+      else desc = `${floor}-й поверх з ${totalFloors || '?'} (середній) → 10 балів`;
+      return `Поверх: ${floor}${totalFloors ? '/' + totalFloors : ''}\n${desc}\n\nБал: ${s}`;
+    }
+    case 'format': {
+      const rooms = property?.rooms;
+      if (!rooms) return null;
+      const roomsDesc = { 1: '1-кімн → 10', 2: '2-кімн → 8', 3: '3-кімн → 6', 4: '4-кімн → 4' };
+      const desc = roomsDesc[rooms] || `${rooms}-кімн → 2`;
+      return `Кімнат: ${rooms}\n${desc}\n\nБал: ${s}`;
+    }
+    case 'exposureTime': {
+      const days = liquidity?.estimatedDaysToSell;
+      if (!days) return null;
+      return `Орієнтовний час продажу: ${days} днів\n\nБал: ${s}`;
+    }
+    case 'condition': {
+      const explanation = criterion?.explanation;
+      return explanation
+        ? `${explanation}\n\nБал: ${s}`
+        : null;
+    }
+    case 'houseType': {
+      const explanation = criterion?.explanation;
+      return explanation
+        ? `${explanation}\n\nБал: ${s}`
+        : null;
+    }
+    case 'furniture': {
+      const explanation = criterion?.explanation;
+      return explanation
+        ? `${explanation}\n\nБал: ${s}`
+        : null;
+    }
+    case 'communications': {
+      const explanation = criterion?.explanation;
+      return explanation
+        ? `${explanation}\n\nБал: ${s}`
+        : null;
+    }
+    case 'infrastructure': {
+      const explanation = criterion?.explanation;
+      return explanation
+        ? `${explanation}\n\nБал: ${s}`
+        : null;
+    }
+    case 'uniqueFeatures': {
+      const explanation = criterion?.explanation;
+      return explanation
+        ? `${explanation}\n\nБал: ${s}`
+        : null;
+    }
+    case 'buyConditions': {
+      const explanation = criterion?.explanation;
+      return explanation
+        ? `${explanation}\n\nБал: ${s}`
+        : null;
+    }
+    default:
+      return null;
+  }
 }
 
 function closeCriterionTooltip() {

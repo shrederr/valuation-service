@@ -61,8 +61,12 @@ export class AnalogFilterService {
   }
 
   private isAreaMatch(subject: UnifiedListing, candidate: UnifiedListing): boolean {
-    if (!subject.totalArea || !candidate.totalArea) {
-      return true;
+    if (!subject.totalArea) {
+      return true; // Subject has no area info, skip filter
+    }
+
+    if (!candidate.totalArea) {
+      return false; // Subject has area but candidate doesn't — reject
     }
 
     const subjectArea = Number(subject.totalArea);
@@ -87,8 +91,12 @@ export class AnalogFilterService {
   }
 
   private isRoomsMatch(subject: UnifiedListing, candidate: UnifiedListing): boolean {
-    if (!subject.rooms || !candidate.rooms) {
-      return true;
+    if (!subject.rooms) {
+      return true; // Subject has no rooms info (e.g. land plot), skip filter
+    }
+
+    if (!candidate.rooms) {
+      return false; // Subject has rooms but candidate doesn't — reject
     }
 
     const diff = Math.abs(subject.rooms - candidate.rooms);

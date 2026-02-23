@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { UnifiedListing, Geo } from '@libs/database';
 
 export interface SearchLevel {
@@ -29,9 +29,12 @@ export class GeoFallbackStrategy {
   // Радиус для поиска "в квартале" в метрах
   private readonly BLOCK_RADIUS_METERS = 200;
 
-
   // Maximum results per search level to avoid loading too many records
   private readonly MAX_RESULTS_PER_LEVEL = 50;
+
+  // Price corridor: ±50% from subject price
+  private readonly PRICE_CORRIDOR = 0.5;
+
   public constructor(
     @InjectRepository(UnifiedListing)
     private readonly listingRepository: Repository<UnifiedListing>,
@@ -85,21 +88,16 @@ export class GeoFallbackStrategy {
    * - Или по улице + номеру дома
    */
   private async searchInBuilding(subject: UnifiedListing): Promise<UnifiedListing[]> {
-    const baseConditions = this.getBaseConditions(subject);
-
     // Сначала ищем по ЖК
     if (subject.complexId) {
-      const results = await this.listingRepository
+      const qb = this.listingRepository
         .createQueryBuilder('l')
         .leftJoinAndSelect('l.geo', 'geo')
         .leftJoinAndSelect('l.street', 'street')
-        .where('l.complexId = :complexId', { complexId: subject.complexId })
-        .andWhere('l.id != :id', { id: subject.id })
-        .andWhere('l.isActive = true')
-        .andWhere('l.dealType = :dealType', { dealType: subject.dealType })
-        .andWhere('l.realtyType = :realtyType', { realtyType: subject.realtyType })
-        .take(this.MAX_RESULTS_PER_LEVEL)
-        .getMany();
+        .where('l.complexId = :complexId', { complexId: subject.complexId });
+
+      this.applyBaseConditions(qb, subject);
+      const results = await qb.take(this.MAX_RESULTS_PER_LEVEL).getMany();
 
       if (results.length > 0) {
         this.logger.debug(`Found ${results.length} analogs in same complex`);
@@ -109,18 +107,15 @@ export class GeoFallbackStrategy {
 
     // Если нет ЖК или не нашли - ищем по улице + дом
     if (subject.streetId && subject.houseNumber) {
-      const results = await this.listingRepository
+      const qb = this.listingRepository
         .createQueryBuilder('l')
         .leftJoinAndSelect('l.geo', 'geo')
         .leftJoinAndSelect('l.street', 'street')
         .where('l.streetId = :streetId', { streetId: subject.streetId })
-        .andWhere('l.houseNumber = :houseNumber', { houseNumber: subject.houseNumber })
-        .andWhere('l.id != :id', { id: subject.id })
-        .andWhere('l.isActive = true')
-        .andWhere('l.dealType = :dealType', { dealType: subject.dealType })
-        .andWhere('l.realtyType = :realtyType', { realtyType: subject.realtyType })
-        .take(this.MAX_RESULTS_PER_LEVEL)
-        .getMany();
+        .andWhere('l.houseNumber = :houseNumber', { houseNumber: subject.houseNumber });
+
+      this.applyBaseConditions(qb, subject);
+      const results = await qb.take(this.MAX_RESULTS_PER_LEVEL).getMany();
 
       this.logger.debug(`Found ${results.length} analogs in same building (street + house)`);
       return results;
@@ -143,7 +138,7 @@ export class GeoFallbackStrategy {
     const latDiff = this.BLOCK_RADIUS_METERS / 111000;
     const lngDiff = this.BLOCK_RADIUS_METERS / (111000 * Math.cos((subject.lat * Math.PI) / 180));
 
-    const results = await this.listingRepository
+    const qb = this.listingRepository
       .createQueryBuilder('l')
       .leftJoinAndSelect('l.geo', 'geo')
       .leftJoinAndSelect('l.street', 'street')
@@ -154,13 +149,10 @@ export class GeoFallbackStrategy {
       .andWhere('l.lng BETWEEN :lngMin AND :lngMax', {
         lngMin: subject.lng - lngDiff,
         lngMax: subject.lng + lngDiff,
-      })
-      .andWhere('l.id != :id', { id: subject.id })
-      .andWhere('l.isActive = true')
-      .andWhere('l.dealType = :dealType', { dealType: subject.dealType })
-      .andWhere('l.realtyType = :realtyType', { realtyType: subject.realtyType })
-        .take(this.MAX_RESULTS_PER_LEVEL)
-        .getMany();
+      });
+
+    this.applyBaseConditions(qb, subject);
+    const results = await qb.take(this.MAX_RESULTS_PER_LEVEL).getMany();
 
     this.logger.debug(`Found ${results.length} analogs within ${this.BLOCK_RADIUS_METERS}m radius`);
     return results;
@@ -174,17 +166,14 @@ export class GeoFallbackStrategy {
       return [];
     }
 
-    const results = await this.listingRepository
+    const qb = this.listingRepository
       .createQueryBuilder('l')
       .leftJoinAndSelect('l.geo', 'geo')
       .leftJoinAndSelect('l.street', 'street')
-      .where('l.streetId = :streetId', { streetId: subject.streetId })
-      .andWhere('l.id != :id', { id: subject.id })
-      .andWhere('l.isActive = true')
-      .andWhere('l.dealType = :dealType', { dealType: subject.dealType })
-      .andWhere('l.realtyType = :realtyType', { realtyType: subject.realtyType })
-        .take(this.MAX_RESULTS_PER_LEVEL)
-        .getMany();
+      .where('l.streetId = :streetId', { streetId: subject.streetId });
+
+    this.applyBaseConditions(qb, subject);
+    const results = await qb.take(this.MAX_RESULTS_PER_LEVEL).getMany();
 
     this.logger.debug(`Found ${results.length} analogs on same street`);
     return results;
@@ -198,17 +187,14 @@ export class GeoFallbackStrategy {
       return [];
     }
 
-    const results = await this.listingRepository
+    const qb = this.listingRepository
       .createQueryBuilder('l')
       .leftJoinAndSelect('l.geo', 'geo')
       .leftJoinAndSelect('l.street', 'street')
-      .where('l.topzoneId = :topzoneId', { topzoneId: subject.topzoneId })
-      .andWhere('l.id != :id', { id: subject.id })
-      .andWhere('l.isActive = true')
-      .andWhere('l.dealType = :dealType', { dealType: subject.dealType })
-      .andWhere('l.realtyType = :realtyType', { realtyType: subject.realtyType })
-        .take(this.MAX_RESULTS_PER_LEVEL)
-        .getMany();
+      .where('l.topzoneId = :topzoneId', { topzoneId: subject.topzoneId });
+
+    this.applyBaseConditions(qb, subject);
+    const results = await qb.take(this.MAX_RESULTS_PER_LEVEL).getMany();
 
     this.logger.debug(`Found ${results.length} analogs in same topzone`);
     return results;
@@ -222,17 +208,14 @@ export class GeoFallbackStrategy {
       return [];
     }
 
-    const results = await this.listingRepository
+    const qb = this.listingRepository
       .createQueryBuilder('l')
       .leftJoinAndSelect('l.geo', 'geo')
       .leftJoinAndSelect('l.street', 'street')
-      .where('l.geoId = :geoId', { geoId: subject.geoId })
-      .andWhere('l.id != :id', { id: subject.id })
-      .andWhere('l.isActive = true')
-      .andWhere('l.dealType = :dealType', { dealType: subject.dealType })
-      .andWhere('l.realtyType = :realtyType', { realtyType: subject.realtyType })
-        .take(this.MAX_RESULTS_PER_LEVEL)
-        .getMany();
+      .where('l.geoId = :geoId', { geoId: subject.geoId });
+
+    this.applyBaseConditions(qb, subject);
+    const results = await qb.take(this.MAX_RESULTS_PER_LEVEL).getMany();
 
     this.logger.debug(`Found ${results.length} analogs in same district`);
     return results;
@@ -259,17 +242,14 @@ export class GeoFallbackStrategy {
       return [];
     }
 
-    const results = await this.listingRepository
+    const qb = this.listingRepository
       .createQueryBuilder('l')
       .leftJoinAndSelect('l.geo', 'geo')
       .leftJoinAndSelect('l.street', 'street')
-      .where('l.geoId IN (:...geoIds)', { geoIds: siblingIds })
-      .andWhere('l.id != :id', { id: subject.id })
-      .andWhere('l.isActive = true')
-      .andWhere('l.dealType = :dealType', { dealType: subject.dealType })
-      .andWhere('l.realtyType = :realtyType', { realtyType: subject.realtyType })
-        .take(this.MAX_RESULTS_PER_LEVEL)
-        .getMany();
+      .where('l.geoId IN (:...geoIds)', { geoIds: siblingIds });
+
+    this.applyBaseConditions(qb, subject);
+    const results = await qb.take(this.MAX_RESULTS_PER_LEVEL).getMany();
 
     this.logger.debug(`Found ${results.length} analogs in neighbor districts`);
     return results;
@@ -307,17 +287,14 @@ export class GeoFallbackStrategy {
       return [];
     }
 
-    const results = await this.listingRepository
+    const qb = this.listingRepository
       .createQueryBuilder('l')
       .leftJoinAndSelect('l.geo', 'geo')
       .leftJoinAndSelect('l.street', 'street')
-      .where('l.geoId IN (:...geoIds)', { geoIds: descendantIds })
-      .andWhere('l.id != :id', { id: subject.id })
-      .andWhere('l.isActive = true')
-      .andWhere('l.dealType = :dealType', { dealType: subject.dealType })
-      .andWhere('l.realtyType = :realtyType', { realtyType: subject.realtyType })
-        .take(this.MAX_RESULTS_PER_LEVEL)
-        .getMany();
+      .where('l.geoId IN (:...geoIds)', { geoIds: descendantIds });
+
+    this.applyBaseConditions(qb, subject);
+    const results = await qb.take(this.MAX_RESULTS_PER_LEVEL).getMany();
 
     this.logger.debug(`Found ${results.length} analogs in city`);
     return results;
@@ -338,11 +315,31 @@ export class GeoFallbackStrategy {
     return ancestors.find((a) => a.type === 'city') || ancestors[0] || null;
   }
 
-  private getBaseConditions(subject: UnifiedListing) {
-    return {
-      id: subject.id,
-      dealType: subject.dealType,
-      realtyType: subject.realtyType,
-    };
+  /**
+   * Applies common WHERE conditions to every analog search query:
+   * - Exclude subject listing
+   * - Only active listings
+   * - Same deal type and realty type
+   * - Must have price > 0 and totalArea > 0
+   * - Price within ±50% corridor (if subject has price)
+   */
+  private applyBaseConditions(
+    qb: SelectQueryBuilder<UnifiedListing>,
+    subject: UnifiedListing,
+  ): void {
+    qb.andWhere('l.id != :id', { id: subject.id })
+      .andWhere('l.isActive = true')
+      .andWhere('l.dealType = :dealType', { dealType: subject.dealType })
+      .andWhere('l.realtyType = :realtyType', { realtyType: subject.realtyType })
+      .andWhere('l.price > 0')
+      .andWhere('l.totalArea > 0');
+
+    const price = Number(subject.price);
+    if (price > 0) {
+      qb.andWhere('l.price BETWEEN :priceMin AND :priceMax', {
+        priceMin: price * (1 - this.PRICE_CORRIDOR),
+        priceMax: price * (1 + this.PRICE_CORRIDOR),
+      });
+    }
   }
 }

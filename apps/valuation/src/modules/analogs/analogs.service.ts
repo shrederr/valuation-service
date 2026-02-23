@@ -21,6 +21,7 @@ export interface AnalogSearchOptions {
 const DEFAULT_MIN_ANALOGS = 5;
 const DEFAULT_TARGET_ANALOGS = 10;
 const DEFAULT_MAX_ANALOGS = 20;
+const MIN_MATCH_SCORE = 0.3;
 
 @Injectable()
 export class AnalogsService {
@@ -50,7 +51,8 @@ export class AnalogsService {
     const { analogs, searchRadius } = await this.searchWithFallback(subject, minAnalogs, targetAnalogs, maxAnalogs);
 
     const scoredAnalogs = this.analogScorerService.scoreAnalogs(subject, analogs);
-    const sortedAnalogs = scoredAnalogs.sort((a, b) => b.matchScore - a.matchScore || a.listing.id.localeCompare(b.listing.id));
+    const qualityAnalogs = scoredAnalogs.filter((a) => a.matchScore >= MIN_MATCH_SCORE);
+    const sortedAnalogs = qualityAnalogs.sort((a, b) => b.matchScore - a.matchScore || a.listing.id.localeCompare(b.listing.id));
     const limitedAnalogs = sortedAnalogs.slice(0, maxAnalogs);
 
     const result: AnalogSearchResultDto = {
