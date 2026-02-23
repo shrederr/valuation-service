@@ -57,11 +57,10 @@ export class ValuationService {
   }
 
   private async generateReport(subject: UnifiedListing): Promise<ValuationReportDto> {
-    const [analogsResult, fairPrice, liquidity] = await Promise.all([
-      this.analogsService.findAnalogs({ listingId: subject.id }),
-      this.fairPriceService.calculateFairPrice({ listingId: subject.id }),
-      this.liquidityService.calculateLiquidity({ listingId: subject.id }),
-    ]);
+    // Sequential to ensure same analogs are used across all calculations
+    const analogsResult = await this.analogsService.findAnalogs({ listingId: subject.id });
+    const fairPrice = await this.fairPriceService.calculateFairPrice({ listingId: subject.id });
+    const liquidity = await this.liquidityService.calculateLiquidity({ listingId: subject.id });
 
     const confidence = this.calculateConfidence(analogsResult.totalCount, fairPrice.analogsCount);
     const notes = this.generateNotes(subject, analogsResult, fairPrice);

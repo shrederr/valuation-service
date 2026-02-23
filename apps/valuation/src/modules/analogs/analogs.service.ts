@@ -50,7 +50,7 @@ export class AnalogsService {
     const { analogs, searchRadius } = await this.searchWithFallback(subject, minAnalogs, targetAnalogs, maxAnalogs);
 
     const scoredAnalogs = this.analogScorerService.scoreAnalogs(subject, analogs);
-    const sortedAnalogs = scoredAnalogs.sort((a, b) => b.matchScore - a.matchScore);
+    const sortedAnalogs = scoredAnalogs.sort((a, b) => b.matchScore - a.matchScore || a.listing.id.localeCompare(b.listing.id));
     const limitedAnalogs = sortedAnalogs.slice(0, maxAnalogs);
 
     const result: AnalogSearchResultDto = {
