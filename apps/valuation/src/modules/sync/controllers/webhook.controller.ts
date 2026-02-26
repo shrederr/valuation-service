@@ -144,6 +144,7 @@ export class WebhookController {
     }
 
     this.logger.log(`Received vector2 webhook: ${payload.event} for property ${payload.data.id}`);
+    this.logger.log(`Vector2 incoming payload: ${JSON.stringify(payload.data)}`);
 
     // Archive — just deactivate, no valuation needed
     if (payload.event === 'archived') {
@@ -195,9 +196,7 @@ export class WebhookController {
       this.logger.warn(`Valuation failed for vector2 ${payload.data.id}: ${msg}`);
     }
 
-    this.logger.log(`Vector2 webhook processed: ${payload.event} for property ${payload.data.id}`);
-
-    return {
+    const response = {
       success: true,
       event: payload.event,
       sourceId: payload.data.id,
@@ -205,6 +204,9 @@ export class WebhookController {
       syncedAt: new Date(),
       liquidityScore,
     };
+    this.logger.log(`Vector2 webhook response for ${payload.data.id}: ${JSON.stringify(response)}`);
+
+    return response;
   }
 
   @Get('vector2/property/:sourceId')
