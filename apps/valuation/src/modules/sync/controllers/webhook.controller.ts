@@ -226,7 +226,8 @@ export class WebhookController {
     });
 
     if (!listing) {
-      throw new NotFoundException(`Vector2 property ${sourceId} not found`);
+      this.logger.warn(`Vector2 GET lookup: property ${sourceId} not found in DB`);
+      return { success: true, event: 'lookup', sourceId, listingId: null, syncedAt: null, liquidityScore: 0 };
     }
 
     let liquidityScore: number | null = null;
