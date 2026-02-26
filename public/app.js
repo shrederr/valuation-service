@@ -720,7 +720,7 @@ function renderPriceHistogram(analogsData, askingPrice) {
   const minPrice = prices[0];
   const maxPrice = prices[prices.length - 1];
   const numBins = Math.min(12, Math.max(5, Math.ceil(prices.length / 2)));
-  const binWidth = (maxPrice - minPrice) / numBins;
+  const binWidth = (maxPrice - minPrice) / numBins || 1;
 
   // Create bins
   const bins = [];
@@ -734,7 +734,7 @@ function renderPriceHistogram(analogsData, askingPrice) {
 
   // Fill bins
   prices.forEach(price => {
-    const binIndex = Math.min(numBins - 1, Math.floor((price - minPrice) / binWidth));
+    const binIndex = Math.min(numBins - 1, Math.max(0, Math.floor((price - minPrice) / binWidth)));
     bins[binIndex].count++;
   });
 
