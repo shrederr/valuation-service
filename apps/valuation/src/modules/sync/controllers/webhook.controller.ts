@@ -162,14 +162,23 @@ export class WebhookController {
       throw new BadRequestException(`Unknown event type: ${payload.event}`);
     }
 
-    // Step 1: Upsert
+    // Step 1: Check if exists, upsert only if new
     let listingId: string;
-    try {
-      listingId = await this.propertySyncService.handleVector2PropertyUpsert(payload.data);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Vector2 upsert failed for ${payload.data.id}: ${message}`);
-      return { success: false, message };
+    const existing = await this.listingRepository.findOne({
+      where: { sourceType: SourceType.VECTOR_CRM, sourceId: payload.data.id },
+    });
+
+    if (existing) {
+      listingId = existing.id;
+      this.logger.log(`Vector2 property ${payload.data.id} already exists (${listingId}), skipping upsert`);
+    } else {
+      try {
+        listingId = await this.propertySyncService.handleVector2PropertyUpsert(payload.data);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        this.logger.error(`Vector2 upsert failed for ${payload.data.id}: ${message}`);
+        return { success: false, message };
+      }
     }
 
     // Step 2: Liquidity score
