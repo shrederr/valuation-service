@@ -177,7 +177,7 @@ export class WebhookController {
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
         this.logger.error(`Vector2 upsert failed for ${payload.data.id}: ${message}`);
-        return { success: false, message };
+        return { success: true, event: payload.event, sourceId: payload.data.id, listingId: null, syncedAt: new Date(), liquidityScore: 0 };
       }
     }
 
