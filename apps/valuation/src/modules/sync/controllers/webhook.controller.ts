@@ -146,16 +146,29 @@ export class WebhookController {
     this.logger.log(`Received vector2 webhook: ${payload.event} for property ${payload.data.id}`);
     this.logger.log(`Vector2 incoming payload: ${JSON.stringify(payload.data)}`);
 
-    // Archive — just deactivate, no valuation needed
+    // Archive — deactivate + return liquidity score
     if (payload.event === 'archived') {
       try {
         await this.propertySyncService.handleVector2PropertyArchived(payload.data.id);
-        return { success: true, event: 'archived', sourceId: payload.data.id, syncedAt: new Date() };
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
         this.logger.error(`Vector2 archive failed for ${payload.data.id}: ${message}`);
-        return { success: false, message };
       }
+
+      let liquidityScore: number | null = 0;
+      try {
+        const report = await this.valuationService.getFullReport({
+          sourceType: SourceType.VECTOR_CRM,
+          sourceId: payload.data.id,
+        });
+        liquidityScore = report.liquidity?.score ?? 0;
+      } catch {
+        this.logger.warn(`Valuation failed for archived vector2 ${payload.data.id}`);
+      }
+
+      const response = { success: true, event: 'archived', sourceId: payload.data.id, syncedAt: new Date(), liquidityScore };
+      this.logger.log(`Vector2 webhook response for ${payload.data.id}: ${JSON.stringify(response)}`);
+      return response;
     }
 
     // Created / Updated — upsert + valuation
