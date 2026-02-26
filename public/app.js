@@ -188,10 +188,12 @@ function init() {
 
   if (id) {
     elements.objectId.value = id;
+    document.querySelector('.search-section').classList.add('hidden');
     handleSearch();
   } else if (url) {
     switchTab('url');
     elements.externalUrl.value = url;
+    document.querySelector('.search-section').classList.add('hidden');
     handleSearch();
   }
 }
