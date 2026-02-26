@@ -117,7 +117,7 @@ export class AggregatorPropertyMapper {
       // Still resolve geoId from coordinates if complex doesn't have one
       if (!geoId && data.lng && data.lat) {
         geoResolution = await this.geoLookupService.resolveGeoForListingWithText(
-          data.lng, data.lat, undefined, data.geoId,
+          data.lng, data.lat, undefined,
         );
         geoId = geoResolution.geoId ?? undefined;
       }
@@ -132,7 +132,6 @@ export class AggregatorPropertyMapper {
         complexData.lng,
         complexData.lat,
         textForMatching,
-        data.geoId,
       );
 
       geoId = geoResolution.geoId ?? undefined;
@@ -150,7 +149,7 @@ export class AggregatorPropertyMapper {
         data.lng,
         data.lat,
         textForMatching,
-        data.geoId,
+        undefined,
         isOlx, // skipNearestFallback for OLX
       );
 
