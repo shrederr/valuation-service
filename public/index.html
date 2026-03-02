@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Оцінка ліквідності нерухомості</title>
-  <link rel="stylesheet" href="styles.css?v=7">
+  <link rel="stylesheet" href="styles.css?v=8">
 </head>
 <body>
   <div class="container">
@@ -23,10 +23,8 @@
         <div class="tab-content active" id="tab-id">
           <input type="text" id="objectId" placeholder="Введіть ID об'єкта (UUID або sourceId)">
           <select id="sourceType">
-            <option value="">Авто</option>
+            <option value="vector_crm" selected>Vector2 CRM</option>
             <option value="aggregator">Aggregator</option>
-            <option value="vector">Vector</option>
-            <option value="vector_crm">Vector2 CRM</option>
           </select>
         </div>
 
@@ -124,10 +122,6 @@
                 <div class="stat-label">Середня</div>
                 <div class="stat-value" id="averagePrice">-</div>
               </div>
-              <div class="stat-item range">
-                <div class="stat-label">Діапазон</div>
-                <div class="stat-value" id="priceRange">-</div>
-              </div>
             </div>
 
             <div class="price-meter">
@@ -218,6 +212,6 @@
     </section>
   </div>
 
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>

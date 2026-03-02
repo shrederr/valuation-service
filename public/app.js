@@ -41,7 +41,6 @@ const elements = {
   // Fair Price
   medianPrice: document.getElementById('medianPrice'),
   averagePrice: document.getElementById('averagePrice'),
-  priceRange: document.getElementById('priceRange'),
   meterRange: document.getElementById('meterRange'),
   meterMarker: document.getElementById('meterMarker'),
   meterMin: document.getElementById('meterMin'),
@@ -642,7 +641,7 @@ function displayFairPrice(fairPrice, askingPrice, analogs) {
   // Stats
   elements.medianPrice.textContent = formatPrice(fairPrice.median);
   elements.averagePrice.textContent = formatPrice(fairPrice.average);
-  elements.priceRange.textContent = `${formatPrice(fairPrice.range?.low)} - ${formatPrice(fairPrice.range?.high)}`;
+
 
   // Meter
   const min = fairPrice.min || fairPrice.range?.low || 0;

@@ -798,10 +798,6 @@ header h1 {
   text-align: center;
 }
 
-.stat-item.range {
-  flex: 1;
-  text-align: center;
-}
 
 .stat-label {
   font-size: 0.875rem;
@@ -850,8 +846,9 @@ header h1 {
 .meter-labels {
   display: flex;
   justify-content: space-between;
-  font-size: 0.8rem;
-  color: var(--gray-500);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--gray-700);
 }
 
 /* Verdict */

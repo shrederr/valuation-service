@@ -31,10 +31,39 @@ export class ListingsService {
       return listing;
     }
 
-    // Try partial match
+    // Try partial match (full normalized URL)
     listing = await this.listingRepository.findOne({
       where: { externalUrl: ILike(`%${normalizedUrl}%`) },
     });
+
+    if (listing) {
+      return listing;
+    }
+
+    // Try to extract numeric ID from URL and search by it
+    // dom.ria.com: ...-33996497.html → 33996497
+    // olx.ua: ...IDabcde.html → extract ID
+    const numericIdMatch = normalizedUrl.match(/[-/](\d{5,})(?:\.html?)?$/);
+    if (numericIdMatch) {
+      const numericId = numericIdMatch[1];
+      this.logger.debug(`Trying numeric ID from URL: ${numericId}`);
+
+      listing = await this.listingRepository.findOne({
+        where: { externalUrl: ILike(`%${numericId}%`) },
+      });
+
+      if (listing) {
+        return listing;
+      }
+
+      // Also try as sourceId for aggregator
+      const sourceId = parseInt(numericId, 10);
+      if (!isNaN(sourceId)) {
+        listing = await this.listingRepository.findOne({
+          where: { sourceType: SourceType.AGGREGATOR, sourceId },
+        });
+      }
+    }
 
     return listing;
   }
