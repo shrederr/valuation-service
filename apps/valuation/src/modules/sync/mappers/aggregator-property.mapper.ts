@@ -45,9 +45,9 @@ export class AggregatorPropertyMapper {
     const totalArea = this.extractNumber(attrs.square_total ?? attrs.totalArea);
     const livingArea = this.extractNumber(attrs.square_living ?? attrs.livingArea);
     const kitchenArea = this.extractNumber(attrs.square_kitchen ?? attrs.kitchenArea);
-    const rooms = this.extractNumber(attrs.rooms_count ?? attrs.rooms);
-    const floor = this.extractNumber(attrs.floor);
-    const totalFloors = this.extractNumber(attrs.floors_count ?? attrs.totalFloors);
+    const rooms = this.extractInt(attrs.rooms_count ?? attrs.rooms);
+    const floor = this.extractInt(attrs.floor);
+    const totalFloors = this.extractInt(attrs.floors_count ?? attrs.totalFloors);
     const price = data.price;
 
     // Land area: from attributes or parse from primaryData (sotki → m²)
@@ -182,7 +182,7 @@ export class AggregatorPropertyMapper {
       topzoneId: undefined, // Aggregator topzoneId не совпадает с нашей БД
       complexId: complexId || undefined, // Resolved via ComplexMatcherService
       houseNumber: data.houseNumber || undefined,
-      apartmentNumber: this.extractNumber(attrs.apartmentNumber) ?? undefined,
+      apartmentNumber: this.extractInt(attrs.apartmentNumber) ?? undefined,
       corps: (attrs.corps as string) || undefined,
       lat: data.lat || undefined,
       lng: data.lng || undefined,
@@ -396,5 +396,10 @@ export class AggregatorPropertyMapper {
       return isNaN(num) ? null : num;
     }
     return null;
+  }
+
+  private extractInt(value: unknown): number | null {
+    const num = this.extractNumber(value);
+    return num !== null ? Math.round(num) : null;
   }
 }
