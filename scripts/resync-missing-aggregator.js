@@ -39,10 +39,11 @@ const DRY_RUN = args.includes('--dry-run');
 const LIMIT = parseInt(args.find((a, i) => args[i - 1] === '--limit') || '0', 10);
 const BATCH_SIZE = parseInt(args.find((a, i) => args[i - 1] === '--batch-size') || '100', 10);
 const DELAY_MS = parseInt(args.find((a, i) => args[i - 1] === '--delay') || '50', 10);
+const MSG_DELAY = parseInt(args.find((a, i) => args[i - 1] === '--msg-delay') || '0', 10);
 
 async function main() {
   console.log('=== Resync Missing Aggregator Objects ===');
-  console.log(`DRY_RUN: ${DRY_RUN}, LIMIT: ${LIMIT || 'ALL'}, BATCH_SIZE: ${BATCH_SIZE}, DELAY: ${DELAY_MS}ms`);
+  console.log(`DRY_RUN: ${DRY_RUN}, LIMIT: ${LIMIT || 'ALL'}, BATCH_SIZE: ${BATCH_SIZE}, DELAY: ${DELAY_MS}ms, MSG_DELAY: ${MSG_DELAY}ms`);
 
   // Connect to both DBs
   const aggClient = new Client(AGGREGATOR_DB);
@@ -91,9 +92,9 @@ async function main() {
   if (!DRY_RUN) {
     console.log('\nStep 2: Connecting to RabbitMQ...');
     const conn = await amqplib.connect(RABBITMQ_URL);
-    channel = await conn.createChannel();
+    channel = await conn.createConfirmChannel();
     await channel.assertExchange(EXCHANGE, 'topic', { durable: true });
-    console.log('  Connected to RabbitMQ');
+    console.log('  Connected to RabbitMQ (confirm channel)');
   }
 
   // Step 3: Process in batches
@@ -163,6 +164,11 @@ async function main() {
             Buffer.from(JSON.stringify(dto)),
             { persistent: true, contentType: 'application/json' },
           );
+
+          // Per-message delay to let consumer process
+          if (MSG_DELAY > 0) {
+            await new Promise((r) => setTimeout(r, MSG_DELAY));
+          }
         }
 
         processed++;
@@ -170,6 +176,11 @@ async function main() {
         errors++;
         console.error(`  Error processing ID=${row.id}: ${err.message}`);
       }
+    }
+
+    // Wait for broker to confirm all messages in this batch
+    if (!DRY_RUN && channel) {
+      await channel.waitForConfirms();
     }
 
     // Progress
