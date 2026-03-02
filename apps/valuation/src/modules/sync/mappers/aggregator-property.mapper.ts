@@ -353,10 +353,10 @@ export class AggregatorPropertyMapper {
         break;
       }
       case 'realtorUa': {
-        // main_params.sqr — "4 сот", "14.7 сот"
+        // main_params.place_sqr — "4 сот", "14.7 сот" (NOT sqr which is total/living/kitchen area)
         const mainParams = primaryData.main_params as Record<string, unknown> | undefined;
-        if (mainParams?.sqr && typeof mainParams.sqr === 'string') {
-          sotki = parseFloat(mainParams.sqr.replace(/[^\d.,]/g, '').replace(',', '.'));
+        if (mainParams?.place_sqr && typeof mainParams.place_sqr === 'string') {
+          sotki = parseFloat((mainParams.place_sqr as string).replace(/[^\d.,]/g, '').replace(',', '.'));
           if (isNaN(sotki)) sotki = null;
         }
         break;
