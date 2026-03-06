@@ -212,6 +212,7 @@ export class AggregatorPropertyMapper {
       // New fields
       primaryData: data.primaryData || undefined,
       realtyPlatform: data.realtyPlatform || platform || undefined,
+      normalizedPhone: this.extractNormalizedPhone(data),
     };
 
     return {
@@ -386,6 +387,22 @@ export class AggregatorPropertyMapper {
     }
 
     return null;
+  }
+
+  private extractNormalizedPhone(data: AggregatorPropertyEventDto): string | undefined {
+    const seller = data.seller || {};
+    const phones = (seller as Record<string, unknown>).phones || (seller as Record<string, unknown>).phone;
+    let phone: string | null = null;
+    if (Array.isArray(phones) && phones.length > 0) {
+      phone = String(phones[0]);
+    } else if (typeof phones === 'string') {
+      phone = phones;
+    }
+    if (!phone) return undefined;
+    const digits = phone.replace(/\D/g, '');
+    if (digits.startsWith('0') && digits.length === 10) return '38' + digits;
+    if (digits.startsWith('8') && digits.length === 10) return '38' + digits;
+    return digits || undefined;
   }
 
   private extractNumber(value: unknown): number | null {

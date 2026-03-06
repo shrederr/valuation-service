@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { join } from 'path';
@@ -13,6 +14,7 @@ import { LiquidityModule } from './modules/liquidity';
 import { ValuationModule } from './modules/valuation';
 import { ListingsModule } from './modules/listings/listings.module';
 import { InfrastructureModule } from './modules/infrastructure';
+import { ExportModule } from './modules/export/export.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -26,6 +28,7 @@ import { AppService } from './app.service';
       rootPath: join(process.cwd(), 'public'),
       exclude: ['/api/{*path}'],
     }),
+    ScheduleModule.forRoot(),
     DatabaseModule,
     TypeOrmModule.forFeature([UnifiedListing]),
     RabbitMQModule.forRoot(),
@@ -37,6 +40,7 @@ import { AppService } from './app.service';
     ValuationModule,
     ListingsModule,
     InfrastructureModule,
+    ExportModule,
   ],
   controllers: [AppController],
   providers: [AppService],

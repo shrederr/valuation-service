@@ -222,6 +222,26 @@ export class UnifiedListing {
    */
   @Column({ name: 'geo_resolution_flags', type: 'text', array: true, nullable: true })
   public geoResolutionFlags?: string[];
+
+  // === Dedup ===
+  @Column({ name: 'normalized_phone', type: 'varchar', length: 20, nullable: true })
+  public normalizedPhone?: string;
+
+  @Column({ type: 'text', nullable: true })
+  public embedding?: string;
+
+  // === Export Tracking ===
+  @Column({ name: 'export_status', type: 'varchar', length: 20, nullable: true })
+  public exportStatus?: string;
+
+  @Column({ name: 'crm_external_id', type: 'varchar', length: 100, nullable: true })
+  public crmExternalId?: string;
+
+  @Column({ name: 'last_exported_at', type: 'timestamptz', nullable: true })
+  public lastExportedAt?: Date;
+
+  @Column({ name: 'export_error', type: 'text', nullable: true })
+  public exportError?: string;
 }
 
 // Alias for backward compatibility

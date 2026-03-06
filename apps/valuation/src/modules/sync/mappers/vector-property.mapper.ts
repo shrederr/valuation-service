@@ -57,6 +57,7 @@ export class VectorPropertyMapper {
       planningType: (data.attributes?.layout_features as string) || undefined,
       heatingType: (data.attributes?.heating_type as string) || undefined,
       attributes: data.attributes || undefined,
+      description: this.extractDescription(data.attributes),
       cadastralNumber: data.cadastralNumber ? { number: data.cadastralNumber } : undefined,
       isActive: true,
       isExclusive: Boolean(data.attributes?.isExclusive) || false,
@@ -121,6 +122,21 @@ export class VectorPropertyMapper {
     const id = this.extractInteger(value);
     if (id === undefined) return undefined;
     return PROJECT_TYPE_MAP[id];
+  }
+
+  private extractDescription(attributes: Record<string, unknown> | undefined): { uk: string; ru?: string; en?: string } | undefined {
+    if (!attributes) return undefined;
+    const desc = attributes.description;
+    if (typeof desc === 'string' && desc.trim()) {
+      return { uk: desc };
+    }
+    if (typeof desc === 'object' && desc !== null) {
+      const d = desc as Record<string, string>;
+      if (d.uk || d.ru || d.en) {
+        return { uk: d.uk || d.ru || d.en || '' };
+      }
+    }
+    return undefined;
   }
 
   private extractInteger(value: unknown): number | undefined {
