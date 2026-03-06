@@ -40,15 +40,18 @@ async function main() {
   );
   console.log('Model loaded');
 
+  // Only count descriptions long enough for meaningful embeddings
   const countResult = await client.query(
     `SELECT COUNT(*) as cnt FROM unified_listings
      WHERE source_type IN ('vector', 'vector_crm') AND is_active = true
-       AND embedding IS NULL AND description IS NOT NULL`,
+       AND embedding IS NULL AND description IS NOT NULL
+       AND LENGTH(COALESCE(description->>'uk', description->>'ru', description->>'en', '')) >= 10`,
   );
   const total = parseInt(countResult.rows[0].cnt, 10);
   console.log(`Total listings to process: ${total}`);
 
   let processed = 0;
+  let skipped = 0;
   let errors = 0;
 
   while (true) {
@@ -56,6 +59,7 @@ async function main() {
       `SELECT id, description FROM unified_listings
        WHERE source_type IN ('vector', 'vector_crm') AND is_active = true
          AND embedding IS NULL AND description IS NOT NULL
+         AND LENGTH(COALESCE(description->>'uk', description->>'ru', description->>'en', '')) >= 10
        ORDER BY updated_at ASC
        LIMIT $1`,
       [batchSize],
@@ -67,10 +71,6 @@ async function main() {
       try {
         const desc = row.description;
         const text = desc?.uk || desc?.ru || desc?.en || '';
-        if (!text || text.length < 10) {
-          processed++;
-          continue;
-        }
 
         const result = await embedder(text, {
           pooling: 'mean',
@@ -91,10 +91,10 @@ async function main() {
     }
 
     const pct = ((processed / total) * 100).toFixed(1);
-    console.log(`Processed: ${processed}/${total} (${pct}%) | Errors: ${errors}`);
+    console.log(`Processed: ${processed}/${total} (${pct}%) | Errors: ${errors} | Skipped: ${skipped}`);
   }
 
-  console.log(`\nDone! Processed: ${processed}, Errors: ${errors}`);
+  console.log(`\nDone! Processed: ${processed}, Skipped: ${skipped}, Errors: ${errors}`);
   await client.end();
 }
 
