@@ -12,18 +12,20 @@ export interface ExtractedPrimaryData {
 export class PrimaryDataExtractor {
   extractForExport(listing: UnifiedListing): ExtractedPrimaryData {
     const attrs = listing.attributes || {};
+    const pd = (listing as any).primaryData || {};
 
     return {
-      phones: this.extractPhones(attrs),
-      photos: this.extractPhotos(attrs),
+      phones: this.extractPhones(attrs) || this.extractPhones(pd),
+      photos: this.extractPhotos(attrs) || this.extractPhotos(pd),
       description: this.extractDescription(listing),
-      url: listing.externalUrl || this.extractUrl(attrs) || null,
+      url: listing.externalUrl || this.extractUrl(attrs) || this.extractUrl(pd) || null,
     };
   }
 
   extractNormalizedPhone(listing: UnifiedListing): string | null {
     const attrs = listing.attributes || {};
-    const phones = this.extractPhones(attrs);
+    const pd = (listing as any).primaryData || {};
+    const phones = this.extractPhones(attrs) || this.extractPhones(pd);
     if (!phones || phones.length === 0) return null;
     return this.normalizePhone(phones[0]);
   }
@@ -40,24 +42,29 @@ export class PrimaryDataExtractor {
   }
 
   private extractPhones(attrs: Record<string, unknown>): string[] | null {
-    const phoneFields = ['phones', 'phone', 'sellerPhones', 'contactPhones'];
+    const phoneFields = ['phones', 'phone', 'sellerPhones', 'contactPhones', 'rieltor_phones'];
     for (const field of phoneFields) {
       const value = attrs[field];
       if (Array.isArray(value) && value.length > 0) {
-        return value.map(String);
+        const valid = value.map(String).filter(p => p.replace(/\D/g, '').length >= 7);
+        if (valid.length > 0) return valid;
       }
-      if (typeof value === 'string' && value.trim()) {
+      if (typeof value === 'string' && value.replace(/\D/g, '').length >= 7) {
         return [value];
       }
     }
 
-    const seller = attrs['seller'] as Record<string, unknown> | undefined;
-    if (seller) {
-      if (Array.isArray(seller['phones']) && seller['phones'].length > 0) {
-        return seller['phones'].map(String);
+    // OLX: user.phone or contact.phone; domRia: seller.phones
+    for (const key of ['seller', 'user', 'contact']) {
+      const nested = attrs[key] as Record<string, unknown> | undefined;
+      if (!nested) continue;
+      if (Array.isArray(nested['phones']) && nested['phones'].length > 0) {
+        const valid = nested['phones'].map(String).filter(p => p.replace(/\D/g, '').length >= 7);
+        if (valid.length > 0) return valid;
       }
-      if (typeof seller['phone'] === 'string' && seller['phone'].trim()) {
-        return [seller['phone']];
+      const phone = nested['phone'];
+      if (typeof phone === 'string' && phone.replace(/\D/g, '').length >= 7) {
+        return [phone];
       }
     }
 
@@ -65,7 +72,7 @@ export class PrimaryDataExtractor {
   }
 
   private extractPhotos(attrs: Record<string, unknown>): string[] | null {
-    const photoFields = ['photos', 'images', 'photo', 'imageUrls'];
+    const photoFields = ['photos', 'images', 'photo', 'imageUrls', 'image_list', 'photosSet'];
     for (const field of photoFields) {
       const value = attrs[field];
       if (Array.isArray(value) && value.length > 0) {
@@ -93,7 +100,7 @@ export class PrimaryDataExtractor {
   }
 
   private extractUrl(attrs: Record<string, unknown>): string | null {
-    const urlFields = ['url', 'externalUrl', 'beautifulUrl', 'sourceUrl'];
+    const urlFields = ['url', 'externalUrl', 'beautifulUrl', 'sourceUrl', 'ad_link'];
     for (const field of urlFields) {
       const value = attrs[field];
       if (typeof value === 'string' && value.trim()) {

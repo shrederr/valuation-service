@@ -72,7 +72,7 @@ export class ToCrmMapper {
 
     try {
       const result = await this.dataSource.query(
-        `SELECT source_id FROM source_id_mappings WHERE local_id = $1 AND entity_type = 'geo' AND source = 'vector2' LIMIT 1`,
+        `SELECT source_id FROM source_id_mappings WHERE local_id = $1 AND entity_type = 'geo' AND source = 'vector2_crm' LIMIT 1`,
         [localId],
       );
       const sourceId = result.length > 0 ? parseInt(result[0].source_id, 10) : null;
@@ -91,7 +91,7 @@ export class ToCrmMapper {
 
     try {
       const result = await this.dataSource.query(
-        `SELECT source_id FROM source_id_mappings WHERE local_id = $1 AND entity_type = 'street' AND source = 'vector2' LIMIT 1`,
+        `SELECT source_id FROM source_id_mappings WHERE local_id = $1 AND entity_type = 'street' AND source = 'vector2_crm' LIMIT 1`,
         [localId],
       );
       const sourceId = result.length > 0 ? parseInt(result[0].source_id, 10) : null;

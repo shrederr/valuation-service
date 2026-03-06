@@ -245,6 +245,7 @@ export class ExportService {
       realtyPlatform: raw.realty_platform,
       normalizedPhone: raw.normalized_phone,
       externalUrl: raw.external_url,
+      primaryData: raw.primary_data,
       publishedAt: raw.published_at ? new Date(raw.published_at as string) : undefined,
       updatedAt: raw.updated_at ? new Date(raw.updated_at as string) : undefined,
       exportStatus: raw.export_status,
