@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
+import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull, Not } from 'typeorm';
 import { firstValueFrom } from 'rxjs';
@@ -249,5 +250,15 @@ out center;`;
         infrastructure: IsNull(),
       },
     });
+  }
+
+  @Cron(process.env.INFRASTRUCTURE_CRON || '0 3 * * *')
+  async cronInfrastructureBatch(): Promise<void> {
+    const missing = await this.getListingsWithoutInfrastructureCount();
+    if (missing === 0) return;
+
+    this.logger.log(`Infrastructure cron: ${missing} listings without infrastructure, starting batch...`);
+    const result = await this.processListingsBatch(500, 200);
+    this.logger.log(`Infrastructure cron done: ${result.processed} processed, ${result.updated} updated`);
   }
 }

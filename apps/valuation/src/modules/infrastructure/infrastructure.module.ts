@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { UnifiedListing } from '@libs/database/entities';
 
 import { InfrastructureService } from './infrastructure.service';
+import { InfrastructureController } from './infrastructure.controller';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { InfrastructureService } from './infrastructure.service';
     }),
     TypeOrmModule.forFeature([UnifiedListing]),
   ],
+  controllers: [InfrastructureController],
   providers: [InfrastructureService],
   exports: [InfrastructureService],
 })
