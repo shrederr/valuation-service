@@ -74,6 +74,51 @@ const REVERSE_PROJECT_MAP: Record<string, number> = {
   'Газобетон': 10,
 };
 
+/** Reverse mapping: layout string → CRM location_rooms ID */
+const REVERSE_LOCATION_ROOMS_MAP: Record<string, number> = {
+  'Роздільна': 1,
+  'Роздільне': 1,
+  'Раздельная': 1,
+  'Суміжна': 2,
+  'Суміжне': 2,
+  'Смежная': 2,
+  'Суміжно-роздільна': 3,
+  'Суміжно-роздільне': 3,
+  'Смежно-раздельная': 3,
+  'Розпашонка': 4,
+  'Напіврозпашонка': 5,
+  'Трамвайчик': 6,
+  'Гостинка': 7,
+  'Малосімейка': 8,
+  'Харківка': 9,
+  'Московський': 10,
+  'Болгарська': 11,
+  'Чеська': 12,
+  'Мінічешка': 13,
+  'Югославський': 14,
+  'Бельгійська': 15,
+  '2 рівні': 16,
+  'Дворівнева': 16,
+  'Двухуровневая': 16,
+  '3 рівні': 17,
+  'Багаторівнева': 17,
+  'Многоуровневая': 17,
+  '4 рівні': 18,
+  'Прохідна': 19,
+  'Суміжно-паралельне': 20,
+  'Перепланування': 21,
+  'Трамвай ділений': 22,
+  'Тупикова': 23,
+  'Вільне планування': 24,
+  'Свободная планировка': 24,
+  'Студія': 24,
+  'Студио': 24,
+  'Євро двушка': 25,
+  'Кухня-вітальня': 25,
+  'Кухня-гостиная': 25,
+  'Євро трійка': 26,
+};
+
 /** object_type defaults per realty type for CRM import */
 const OBJECT_TYPE_MAP: Record<string, number> = {
   apartment: 1,    // вторинка (default)
@@ -164,6 +209,7 @@ export class ToCrmMapper {
     result.object_type = this.resolveObjectType(listing, attrs);
     result.condition_type = this.resolveConditionType(listing, attrs);
     result.project = this.resolveProject(listing, attrs);
+    result.location_rooms = this.resolveLocationRooms(listing, attrs);
 
     // Pass through remaining numeric attribute IDs
     const numericPassthrough = ['housing_material', 'apartment_type', 'ceiling_height'] as const;
@@ -255,6 +301,66 @@ export class ToCrmMapper {
     if (listing.houseType) {
       const mapped = REVERSE_PROJECT_MAP[listing.houseType];
       if (mapped) return mapped;
+    }
+    // Fallback: extract from primaryData
+    const pd = (listing as any).primaryData;
+    if (pd) {
+      // OLX: apartments_object_type = "Новобудова" → project 7
+      if (Array.isArray(pd.params)) {
+        const objType = pd.params.find((p: any) => p?.key === 'apartments_object_type');
+        if (objType?.normalizedValue === 'primary_market' || objType?.value === 'Новобудова') {
+          return 7; // Новобуд
+        }
+        // OLX: house_type → wall material as project hint
+        const houseType = pd.params.find((p: any) => p?.key === 'property_type_appartments_sale');
+        if (houseType?.value) {
+          const mapped = REVERSE_PROJECT_MAP[houseType.value];
+          if (mapped) return mapped;
+        }
+      }
+      // realtorUa: main_params.border
+      if (pd.main_params?.border) {
+        const mapped = REVERSE_PROJECT_MAP[pd.main_params.border];
+        if (mapped) return mapped;
+      }
+    }
+    return undefined;
+  }
+
+  /** Resolve location_rooms (планировка): reverse map from layout string → CRM ID */
+  private resolveLocationRooms(listing: UnifiedListing, attrs: Record<string, unknown>): number | undefined {
+    // If attrs has a CRM-range location_rooms ID, use directly
+    const raw = attrs.location_rooms;
+    if (raw !== undefined && raw !== null) {
+      const num = Number(raw);
+      if (!isNaN(num) && num >= 1 && num <= 26) return num;
+    }
+    // From entity column planningType
+    if (listing.planningType) {
+      const mapped = REVERSE_LOCATION_ROOMS_MAP[listing.planningType];
+      if (mapped) return mapped;
+    }
+    // Extract from primaryData
+    const pd = (listing as any).primaryData;
+    if (pd) {
+      // OLX: params key="layout"
+      if (Array.isArray(pd.params)) {
+        const layoutParam = pd.params.find((p: any) => p?.key === 'layout');
+        if (layoutParam?.value) {
+          const mapped = REVERSE_LOCATION_ROOMS_MAP[layoutParam.value];
+          if (mapped) return mapped;
+        }
+      }
+      // realtorUa: main_params.planirovka
+      if (pd.main_params?.planirovka) {
+        const mapped = REVERSE_LOCATION_ROOMS_MAP[pd.main_params.planirovka];
+        if (mapped) return mapped;
+      }
+      // mlsUkraine: params.osoblyvosti_planuvannja
+      if (pd.params?.osoblyvosti_planuvannja && typeof pd.params === 'object' && !Array.isArray(pd.params)) {
+        const mapped = REVERSE_LOCATION_ROOMS_MAP[pd.params.osoblyvosti_planuvannja];
+        if (mapped) return mapped;
+      }
     }
     return undefined;
   }

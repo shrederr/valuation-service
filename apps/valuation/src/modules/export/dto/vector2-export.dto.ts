@@ -20,6 +20,7 @@ export interface Vector2ExportAttributes {
   apartment_type?: number;
   condition_type?: number;
   project?: number;
+  location_rooms?: number;
   housing_material?: number;
   map_x?: string;
   map_y?: string;
