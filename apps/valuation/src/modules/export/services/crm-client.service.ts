@@ -11,13 +11,13 @@ export class CrmClientService {
 
   constructor(private readonly configService: ConfigService) {
     this.apiUrl = this.configService.get<string>('CRM_API_URL', '');
-    const apiKey = this.configService.get<string>('CRM_API_KEY', '');
+    const accessKey = this.configService.get<string>('CRM_ACCESS_KEY', '');
 
     if (this.apiUrl) {
       this.client = axios.create({
         baseURL: this.apiUrl,
-        timeout: 10000,
-        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+        timeout: 30000,
+        headers: accessKey ? { 'X-Access-Key': accessKey } : {},
       });
       this.logger.log(`CRM client initialized: ${this.apiUrl}`);
     } else {
@@ -30,31 +30,37 @@ export class CrmClientService {
     return !!this.client;
   }
 
-  async createObject(dto: Vector2ExportDto): Promise<{ id: string }> {
+  async importObject(dto: Vector2ExportDto): Promise<{ success: boolean; id?: string; error?: string }> {
     if (!this.client) {
-      this.logger.debug(`[dry-run] Would create: source_id=${dto.source_id}, platform=${dto.source_platform}`);
-      return { id: `dry-run-${dto.source_id}` };
+      this.logger.debug(`[dry-run] Would import: external_id=${dto.external_id}, platform=${dto.source_platform}`);
+      return { success: true, id: `dry-run-${dto.external_id}` };
     }
 
-    const response = await this.client.post('/objects', dto);
-    return { id: String(response.data.id || response.data.externalId) };
-  }
-
-  async updateObject(crmId: string, dto: Vector2ExportDto): Promise<void> {
-    if (!this.client) {
-      this.logger.debug(`[dry-run] Would update: crmId=${crmId}`);
-      return;
+    // Retry once on timeout (object may already be created on CRM side)
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const response = await this.client.post('/import-object', dto);
+        // CRM response: {"success":true,"data":{"id":396974,"external_id":...}}
+        const payload = response.data?.data || response.data;
+        return {
+          success: true,
+          id: String(payload.id || payload.external_id || dto.external_id),
+        };
+      } catch (error) {
+        const isTimeout = axios.isAxiosError(error) && error.code === 'ECONNABORTED';
+        if (isTimeout && attempt === 1) {
+          this.logger.warn(`CRM timeout for external_id=${dto.external_id}, retrying...`);
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
+        const message = axios.isAxiosError(error)
+          ? `${error.response?.status} ${JSON.stringify(error.response?.data || error.message)}`
+          : String(error);
+        this.logger.warn(`CRM import failed for external_id=${dto.external_id}: ${message}`);
+        return { success: false, error: message };
+      }
     }
 
-    await this.client.put(`/objects/${crmId}`, dto);
-  }
-
-  async deactivateObject(crmId: string): Promise<void> {
-    if (!this.client) {
-      this.logger.debug(`[dry-run] Would deactivate: crmId=${crmId}`);
-      return;
-    }
-
-    await this.client.patch(`/objects/${crmId}`, { is_active: false });
+    return { success: false, error: 'Unexpected retry exit' };
   }
 }

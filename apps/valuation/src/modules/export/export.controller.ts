@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Param, Body, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { ExportService } from './export.service';
 import { ExportRunDto } from './dto';
 
@@ -11,7 +11,7 @@ export class ExportController {
   @Post('run')
   @ApiOperation({ summary: 'Trigger export manually' })
   async run(@Body() body: ExportRunDto) {
-    return this.exportService.runExport(body.batchSize);
+    return this.exportService.runExport({ batchSize: body.batchSize, geoId: body.geoId, realtyType: body.realtyType });
   }
 
   @Get('status')
@@ -38,16 +38,15 @@ export class ExportController {
   }
 
   @Post('single/:id')
-  @ApiOperation({ summary: 'Export a single listing' })
+  @ApiOperation({ summary: 'Export a single listing to CRM' })
   async exportSingle(@Param('id') id: string) {
-    const preview = await this.exportService.previewExport(id);
-    if (!preview) {
-      return { error: 'Listing not found' };
-    }
-    if (preview.dedup.isDuplicate) {
-      return { error: 'Listing is a duplicate', dedup: preview.dedup };
-    }
-    // For now, just return preview (actual send when CRM endpoint is ready)
-    return { status: 'preview_only', ...preview };
+    return this.exportService.exportSingle(id);
+  }
+
+  @Post('translate-batch')
+  @ApiOperation({ summary: 'Pre-translate descriptions (UK↔RU) for listings missing a language' })
+  @ApiQuery({ name: 'batchSize', required: false, type: Number })
+  async translateBatch(@Query('batchSize') batchSize?: string) {
+    return this.exportService.translateBatch(batchSize ? Number(batchSize) : 100);
   }
 }

@@ -10,7 +10,7 @@ import {
   DOMRIA_WALL_TYPE_MAP,
 } from './attribute-mappings';
 
-export type RealtyPlatform = 'olx' | 'domRia' | 'realtorUa' | 'rieltor' | 'unknown';
+export type RealtyPlatform = 'olx' | 'domRia' | 'realtorUa' | 'realEstateLvivUa' | 'mlsUkraine' | 'unknown';
 
 export interface AttributeMapResult {
   condition?: string;
@@ -26,20 +26,30 @@ export class AttributeMapperService {
   /**
    * Detect platform from realty_platform field or URL
    */
-  detectPlatform(realtyPlatform?: string, url?: string): RealtyPlatform {
+  detectPlatform(realtyPlatform?: string, url?: string, primaryData?: Record<string, unknown>): RealtyPlatform {
     if (realtyPlatform) {
       const normalized = realtyPlatform.toLowerCase();
       if (normalized.includes('olx')) return 'olx';
       if (normalized.includes('domria') || normalized.includes('dom.ria')) return 'domRia';
-      if (normalized.includes('realtor')) return 'realtorUa';
-      if (normalized.includes('rieltor')) return 'rieltor';
+      if (normalized.includes('realtor') || normalized.includes('rieltor')) return 'realtorUa';
+      if (normalized.includes('realestatelviv') || normalized.includes('real-estate.lviv')) return 'realEstateLvivUa';
+      if (normalized.includes('mls')) return 'mlsUkraine';
     }
 
-    if (url) {
-      if (url.includes('olx.ua')) return 'olx';
-      if (url.includes('dom.ria.com')) return 'domRia';
-      if (url.includes('realtor.ua')) return 'realtorUa';
-      if (url.includes('rieltor.ua')) return 'rieltor';
+    const checkUrl = url || (primaryData?.url as string);
+    if (checkUrl) {
+      if (checkUrl.includes('olx.ua')) return 'olx';
+      if (checkUrl.includes('dom.ria.com')) return 'domRia';
+      if (checkUrl.includes('rieltor.ua') || checkUrl.includes('realtor.ua')) return 'realtorUa';
+      if (checkUrl.includes('real-estate.lviv.ua')) return 'realEstateLvivUa';
+      if (checkUrl.includes('mlsukraine.com')) return 'mlsUkraine';
+    }
+
+    // Detect from primary_data structure
+    if (primaryData) {
+      if (primaryData.photosSet) return 'olx';
+      if (primaryData.image_list) return 'realtorUa';
+      if (primaryData.web_id) return 'domRia';
     }
 
     return 'unknown';

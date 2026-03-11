@@ -63,10 +63,11 @@ export class AggregatorPropertyMapper {
     const calculatedPricePerMeter = effectiveArea && price ? Math.round((price / effectiveArea) * 100) / 100 : null;
     const pricePerMeter = existingPricePerMeter ?? calculatedPricePerMeter;
 
-    // Detect platform from realty_platform or URL
+    // Detect platform from realty_platform, URL, or primaryData structure
     const platform = this.attributeMapperService.detectPlatform(
       data.realtyPlatform,
       data.url,
+      data.primaryData as Record<string, unknown>,
     );
 
     const isOlx = platform === 'olx';

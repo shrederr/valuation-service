@@ -72,7 +72,7 @@ export class PrimaryDataExtractor {
   }
 
   private extractPhotos(attrs: Record<string, unknown>): string[] | null {
-    const photoFields = ['photos', 'images', 'photo', 'imageUrls', 'image_list', 'photosSet'];
+    const photoFields = ['photos', 'images', 'photo', 'imageUrls', 'image_list', 'ad_img', 'photosSet'];
     for (const field of photoFields) {
       const value = attrs[field];
       if (Array.isArray(value) && value.length > 0) {

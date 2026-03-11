@@ -4,6 +4,27 @@ import { UnifiedListing } from '@libs/database';
 import { PrimaryDataExtractor } from './primary-data-extractor';
 import { EmbeddingService } from './embedding.service';
 
+const TEXT_SIM = 0.92;
+const PRICE_DELTA = 0.05;
+
+/**
+ * Source filter for dedup: match against CRM objects AND already-exported aggregator objects.
+ * This prevents cross-platform duplicates (e.g. same property on OLX already exported,
+ * then appearing from DomRia).
+ */
+const DEDUP_SOURCE_FILTER = `(source_type IN ('vector', 'vector_crm') OR (source_type = 'aggregator' AND export_status = 'exported'))`;
+
+/**
+ * Exact attribute keys that must match per realty type (from api_realty_comparison).
+ * These are the DB columns we check for exact equality.
+ */
+const REALTY_TYPE_ATTR_KEYS: Record<string, string[]> = {
+  apartment: ['total_floors', 'total_area', 'floor'],
+  house: ['total_area', 'total_floors'],
+  commercial: ['total_area', 'total_floors'],
+  area: ['land_area'],
+};
+
 export interface DedupResult {
   isDuplicate: boolean;
   matchedId?: string;
@@ -51,15 +72,17 @@ export class DedupCheckService {
 
     const result = await this.dataSource.query(
       `SELECT id FROM unified_listings
-       WHERE source_type IN ('vector', 'vector_crm')
+       WHERE ${DEDUP_SOURCE_FILTER}
          AND is_active = true
-         AND street_id = $1
-         AND house_number = $2
-         AND ($3::int IS NULL OR rooms = $3)
-         AND ($4::numeric IS NULL OR ABS(total_area - $4) <= 2)
-         AND ($5::numeric IS NULL OR ABS(price - $5) / NULLIF(price, 0) <= 0.10)
+         AND id != $1
+         AND street_id = $2
+         AND house_number = $3
+         AND ($4::int IS NULL OR rooms = $4)
+         AND ($5::numeric IS NULL OR ABS(total_area - $5) <= 2)
+         AND ($6::numeric IS NULL OR ABS(price - $6) / NULLIF(GREATEST(price, $6), 0) <= 0.10)
        LIMIT 1`,
       [
+        listing.id,
         listing.streetId,
         listing.houseNumber,
         listing.rooms ?? null,
@@ -78,41 +101,61 @@ export class DedupCheckService {
 
     const result = await this.dataSource.query(
       `SELECT id FROM unified_listings
-       WHERE source_type IN ('vector', 'vector_crm')
+       WHERE ${DEDUP_SOURCE_FILTER}
          AND is_active = true
-         AND normalized_phone = $1
-         AND realty_type = $2
+         AND id != $1
+         AND normalized_phone = $2
+         AND realty_type = $3
        LIMIT 1`,
-      [phone, listing.realtyType],
+      [listing.id, phone, listing.realtyType],
     );
 
     return result.length > 0 ? result[0].id : null;
   }
 
-  /** Level 3: Geo proximity (50m) + area + rooms (PostGIS) */
+  /**
+   * Level 3: Geo proximity (50m) + exact attribute match + price ±5% (PostGIS)
+   *
+   * Following api_realty_comparison approach: exact match on key attributes
+   * per realty type (total_floors, total_area, floor for apartments) to avoid
+   * false positives in large complexes where many apartments share similar params.
+   */
   private async checkByGeoProximity(listing: UnifiedListing): Promise<string | null> {
     if (!listing.lat || !listing.lng) return null;
 
+    const attrKeys = REALTY_TYPE_ATTR_KEYS[listing.realtyType] || [];
+    const attrConditions = this.buildAttrConditions(listing, attrKeys, 8);
+
+    // If we don't have enough attributes for meaningful matching, skip Level 3
+    // (we need at least area to avoid false positives)
+    if (!listing.totalArea && !listing.landArea) return null;
+
     const result = await this.dataSource.query(
       `SELECT id FROM unified_listings
-       WHERE source_type IN ('vector', 'vector_crm')
+       WHERE ${DEDUP_SOURCE_FILTER}
          AND is_active = true
-         AND realty_type = $1
+         AND id != $1
+         AND realty_type = $2
          AND lat IS NOT NULL AND lng IS NOT NULL
          AND ST_DWithin(
            geography(ST_SetSRID(ST_MakePoint(lng::float8, lat::float8), 4326)),
-           geography(ST_SetSRID(ST_MakePoint($2::float8, $3::float8), 4326)),
+           geography(ST_SetSRID(ST_MakePoint($3::float8, $4::float8), 4326)),
            50
          )
-         AND ($4::numeric IS NULL OR ABS(total_area - $4) <= 2)
          AND ($5::int IS NULL OR rooms = $5)
+         AND price > 0 AND $6::numeric > 0
+         AND ABS(price - $6) / NULLIF(GREATEST(price, $6), 0) <= $7
+         ${attrConditions.sql}
        LIMIT 1`,
       [
+        listing.id,
         listing.realtyType,
         listing.lng,
         listing.lat,
-        listing.totalArea ?? null,
         listing.rooms ?? null,
+        listing.price ?? 0,
+        PRICE_DELTA,
+        ...attrConditions.params,
       ],
     );
 
@@ -120,8 +163,10 @@ export class DedupCheckService {
   }
 
   /**
-   * Level 4: Semantic embedding similarity (pgvector + HNSW)
-   * Cosine similarity >= 0.92 → duplicate
+   * Level 4: Semantic embedding similarity (pgvector + HNSW) + exact attributes
+   *
+   * Following api_realty_comparison: first filter by exact attributes (term match),
+   * then rank by cosine similarity >= 0.92.
    */
   private async checkByEmbeddingSimilarity(
     listing: UnifiedListing,
@@ -132,6 +177,9 @@ export class DedupCheckService {
     if (!description || description.length < 30) return null;
     if (!listing.geoId) return null;
 
+    const attrKeys = REALTY_TYPE_ATTR_KEYS[listing.realtyType] || [];
+    const attrConditions = this.buildAttrConditions(listing, attrKeys, 5);
+
     try {
       const queryEmbedding = await this.embeddingService.embed(description);
       const vectorStr = `[${queryEmbedding.join(',')}]`;
@@ -139,20 +187,21 @@ export class DedupCheckService {
       const result = await this.dataSource.query(
         `SELECT id, 1 - (embedding <=> $1::vector) AS similarity
          FROM unified_listings
-         WHERE source_type IN ('vector', 'vector_crm')
+         WHERE ${DEDUP_SOURCE_FILTER}
            AND is_active = true
-           AND realty_type = $2
-           AND geo_id = $3
+           AND id != $2
+           AND realty_type = $3
+           AND geo_id = $4
            AND embedding IS NOT NULL
-           AND ($4::numeric IS NULL OR ABS(total_area - $4) <= 10)
+           ${attrConditions.sql}
          ORDER BY embedding <=> $1::vector
          LIMIT 1`,
-        [vectorStr, listing.realtyType, listing.geoId, listing.totalArea ?? null],
+        [vectorStr, listing.id, listing.realtyType, listing.geoId, ...attrConditions.params],
       );
 
       if (result.length > 0) {
         const similarity = parseFloat(result[0].similarity);
-        if (similarity >= 0.92) {
+        if (similarity >= TEXT_SIM) {
           return { id: result[0].id, similarity };
         }
       }
@@ -163,5 +212,70 @@ export class DedupCheckService {
     }
 
     return null;
+  }
+
+  /**
+   * Build SQL conditions for exact attribute matching per realty type.
+   * Mirrors api_realty_comparison's `term` queries on attributes.
+   *
+   * @param paramOffset - starting parameter index (1-based, after existing params)
+   */
+  private buildAttrConditions(
+    listing: UnifiedListing,
+    attrKeys: string[],
+    paramOffset = 6,
+  ): { sql: string; params: unknown[] } {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    let idx = paramOffset;
+
+    for (const key of attrKeys) {
+      const value = this.getAttrValue(listing, key);
+      if (value === null || value === undefined) continue;
+
+      // Exact match for key attributes (like api_realty_comparison's term queries)
+      clauses.push(`AND ${this.columnForAttrKey(key)} = $${idx}`);
+      params.push(value);
+      idx++;
+    }
+
+    return { sql: clauses.join('\n         '), params };
+  }
+
+  /** Map attribute key → listing property value */
+  private getAttrValue(listing: UnifiedListing, key: string): number | null {
+    switch (key) {
+      case 'total_area':
+      case 'square_total':
+        return listing.totalArea ?? null;
+      case 'floor':
+        return listing.floor ?? null;
+      case 'total_floors':
+      case 'floors_count':
+        return listing.totalFloors ?? null;
+      case 'land_area':
+      case 'square_land_total':
+        return listing.landArea ?? null;
+      default:
+        return null;
+    }
+  }
+
+  /** Map attribute key → SQL column name */
+  private columnForAttrKey(key: string): string {
+    const map: Record<string, string> = {
+      total_area: 'total_area',
+      square_total: 'total_area',
+      floor: 'floor',
+      total_floors: 'total_floors',
+      floors_count: 'total_floors',
+      land_area: 'land_area',
+      square_land_total: 'land_area',
+    };
+    const col = map[key];
+    if (!col) {
+      throw new Error(`Unknown attribute key for dedup: ${key}`);
+    }
+    return col;
   }
 }

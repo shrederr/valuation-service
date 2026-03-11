@@ -4,6 +4,7 @@ import { Cron } from '@nestjs/schedule';
 import { DataSource } from 'typeorm';
 import { UnifiedListing } from '@libs/database';
 import { DedupCheckService } from './services/dedup-check.service';
+import { TranslationService } from './services/translation.service';
 import { ToCrmMapper } from './mappers/to-crm.mapper';
 import { CrmClientService } from './services/crm-client.service';
 import { ExportStatsDto } from './dto';
@@ -21,6 +22,7 @@ export class ExportService {
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
     private readonly dedupCheckService: DedupCheckService,
+    private readonly translationService: TranslationService,
     private readonly toCrmMapper: ToCrmMapper,
     private readonly crmClientService: CrmClientService,
   ) {
@@ -34,30 +36,30 @@ export class ExportService {
     await this.runExport();
   }
 
-  async runExport(overrideBatchSize?: number): Promise<{ exported: number; duplicates: number; errors: number; skipped: number }> {
+  async runExport(opts?: { batchSize?: number; geoId?: number; realtyType?: string }): Promise<{
+    exported: number; duplicates: number; errors: number; skipped: number;
+    crmIds: { sourceId: number; crmId: string }[];
+  }> {
     if (this.running) {
       this.logger.warn('Export already running, skipping');
-      return { exported: 0, duplicates: 0, errors: 0, skipped: 0 };
+      return { exported: 0, duplicates: 0, errors: 0, skipped: 0, crmIds: [] };
     }
 
     this.running = true;
-    const stats = { exported: 0, duplicates: 0, errors: 0, skipped: 0 };
-    const batch = overrideBatchSize || this.batchSize;
+    const stats = { exported: 0, duplicates: 0, errors: 0, skipped: 0, crmIds: [] as { sourceId: number; crmId: string }[] };
+    const batch = opts?.batchSize || this.batchSize;
+    const filters = { geoId: opts?.geoId, realtyType: opts?.realtyType };
 
     try {
-      this.logger.log(`Export run started (batch=${batch})`);
+      this.logger.log(`Export run started (batch=${batch}, geoId=${filters.geoId || 'all'}, realtyType=${filters.realtyType || 'all'})`);
 
       // Process new objects
-      const newStats = await this.processNewObjects(batch);
+      const newStats = await this.processNewObjects(batch, filters);
       stats.exported += newStats.exported;
       stats.duplicates += newStats.duplicates;
       stats.errors += newStats.errors;
       stats.skipped += newStats.skipped;
-
-      // Process updated objects
-      const updStats = await this.processUpdatedObjects(batch);
-      stats.exported += updStats.exported;
-      stats.errors += updStats.errors;
+      stats.crmIds.push(...newStats.crmIds);
 
       this.logger.log(
         `Export run done: exported=${stats.exported}, duplicates=${stats.duplicates}, errors=${stats.errors}, skipped=${stats.skipped}`,
@@ -65,36 +67,52 @@ export class ExportService {
     } finally {
       this.running = false;
       this.lastRunAt = new Date();
-      this.lastRunStats = stats;
+      this.lastRunStats = { exported: stats.exported, duplicates: stats.duplicates, errors: stats.errors, skipped: stats.skipped };
     }
 
     return stats;
   }
 
-  private async processNewObjects(limit: number) {
-    const stats = { exported: 0, duplicates: 0, errors: 0, skipped: 0 };
+  private async processNewObjects(limit: number, filters?: { geoId?: number; realtyType?: string }) {
+    const stats = { exported: 0, duplicates: 0, errors: 0, skipped: 0, crmIds: [] as { sourceId: number; crmId: string }[] };
+
+    // Build dynamic WHERE clause
+    const conditions = [
+      `source_type = 'aggregator'`,
+      `is_active = true`,
+      `export_status IS NULL`,
+      `deleted_at IS NULL`,
+    ];
+    const params: unknown[] = [];
+    let paramIdx = 1;
+
+    if (filters?.geoId) {
+      conditions.push(`geo_id = $${paramIdx}`);
+      params.push(filters.geoId);
+      paramIdx++;
+    }
+    if (filters?.realtyType) {
+      conditions.push(`realty_type = $${paramIdx}`);
+      params.push(filters.realtyType);
+      paramIdx++;
+    }
+
+    conditions.push(`price > 0 AND total_area > 0`);
+
+    params.push(limit);
+    const limitParam = `$${paramIdx}`;
 
     const listings = await this.dataSource.query(
       `SELECT * FROM unified_listings
-       WHERE source_type = 'aggregator'
-         AND is_active = true
-         AND export_status IS NULL
-         AND deleted_at IS NULL
+       WHERE ${conditions.join(' AND ')}
        ORDER BY updated_at ASC
-       LIMIT $1`,
-      [limit],
+       LIMIT ${limitParam}`,
+      params,
     );
 
     for (const raw of listings) {
       try {
         const listing = this.hydrate(raw);
-
-        // Validate
-        if (!listing.price || !listing.totalArea) {
-          await this.updateExportStatus(listing.id, 'skipped', null, 'Missing price or area');
-          stats.skipped++;
-          continue;
-        }
 
         // Dedup check
         const dedup = await this.dedupCheckService.isDuplicate(listing);
@@ -105,11 +123,23 @@ export class ExportService {
           continue;
         }
 
+        // Translate description if needed (UK↔RU)
+        await this.translateIfNeeded(listing);
+
         // Map and send
         const dto = await this.toCrmMapper.map(listing);
-        const result = await this.crmClientService.createObject(dto);
-        await this.updateExportStatus(listing.id, 'exported', result.id);
+        const result = await this.crmClientService.importObject(dto);
+        if (!result.success) {
+          await this.updateExportStatus(listing.id, 'error', null, result.error);
+          stats.errors++;
+          continue;
+        }
+        await this.updateExportStatus(listing.id, 'exported', result.id || null);
         stats.exported++;
+        stats.crmIds.push({ sourceId: listing.sourceId, crmId: result.id! });
+
+        // Throttle: 150ms between requests
+        await new Promise(r => setTimeout(r, 150));
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         await this.updateExportStatus(raw.id, 'error', null, msg);
@@ -140,9 +170,15 @@ export class ExportService {
     for (const raw of listings) {
       try {
         const listing = this.hydrate(raw);
+        await this.translateIfNeeded(listing);
         const dto = await this.toCrmMapper.map(listing);
-        await this.crmClientService.updateObject(raw.crm_external_id, dto);
-        await this.updateExportStatus(listing.id, 'exported', raw.crm_external_id);
+        const result = await this.crmClientService.importObject(dto);
+        if (!result.success) {
+          await this.updateExportStatus(listing.id, 'error', raw.crm_external_id, result.error);
+          stats.errors++;
+          continue;
+        }
+        await this.updateExportStatus(listing.id, 'exported', result.id || raw.crm_external_id);
         stats.exported++;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -152,6 +188,43 @@ export class ExportService {
     }
 
     return stats;
+  }
+
+  async exportSingle(listingId: string) {
+    const rows = await this.dataSource.query(
+      `SELECT * FROM unified_listings WHERE id = $1`,
+      [listingId],
+    );
+    if (rows.length === 0) return { error: 'Listing not found' };
+
+    const listing = this.hydrate(rows[0]);
+
+    // Validate
+    if (!listing.price || !listing.totalArea) {
+      return { error: 'Missing price or area', listing: rows[0] };
+    }
+
+    // Dedup check
+    const dedup = await this.dedupCheckService.isDuplicate(listing);
+    if (dedup.isDuplicate) {
+      return { error: 'Listing is a duplicate', dedup };
+    }
+
+    // Translate description if needed
+    await this.translateIfNeeded(listing);
+
+    // Map
+    const dto = await this.toCrmMapper.map(listing);
+
+    // Send to CRM
+    const result = await this.crmClientService.importObject(dto);
+    if (!result.success) {
+      await this.updateExportStatus(listing.id, 'error', null, result.error);
+      return { error: 'CRM import failed', details: result.error, exportDto: dto };
+    }
+
+    await this.updateExportStatus(listing.id, 'exported', result.id || null);
+    return { status: 'exported', crmId: result.id, exportDto: dto };
   }
 
   async previewExport(listingId: string) {
@@ -209,6 +282,84 @@ export class ExportService {
        WHERE id = $4`,
       [status, crmExternalId, error || null, id],
     );
+  }
+
+  /**
+   * Translate descriptions for a batch of listings that are missing UK or RU.
+   * Used for pre-translating before export.
+   */
+  async translateBatch(batchSize = 100): Promise<{ translated: number; errors: number; total: number }> {
+    const stats = { translated: 0, errors: 0, total: 0 };
+
+    if (!this.translationService.isEnabled()) {
+      return { ...stats, total: -1 };
+    }
+
+    const listings = await this.dataSource.query(
+      `SELECT * FROM unified_listings
+       WHERE source_type = 'aggregator'
+         AND is_active = true
+         AND deleted_at IS NULL
+         AND description IS NOT NULL
+         AND (
+           (description->>'uk' IS NOT NULL AND description->>'uk' != '' AND (description->>'ru' IS NULL OR description->>'ru' = ''))
+           OR
+           (description->>'ru' IS NOT NULL AND description->>'ru' != '' AND (description->>'uk' IS NULL OR description->>'uk' = ''))
+         )
+       ORDER BY updated_at DESC
+       LIMIT $1`,
+      [batchSize],
+    );
+
+    stats.total = listings.length;
+    this.logger.log(`Translation batch: ${listings.length} listings to translate`);
+
+    for (const raw of listings) {
+      try {
+        const listing = this.hydrate(raw);
+        const updated = await this.translateIfNeeded(listing);
+        if (updated) stats.translated++;
+      } catch (err) {
+        stats.errors++;
+        this.logger.warn(`Translation error for ${raw.id}: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+
+    this.logger.log(`Translation batch done: ${stats.translated} translated, ${stats.errors} errors`);
+    return stats;
+  }
+
+  /**
+   * Translate listing description if missing UK or RU, save to DB.
+   * Returns true if translation was performed and saved.
+   */
+  private async translateIfNeeded(listing: UnifiedListing): Promise<boolean> {
+    if (!listing.description) return false;
+
+    const hasUk = !!listing.description.uk?.trim();
+    const hasRu = !!listing.description.ru?.trim();
+
+    // Both present or neither — nothing to do
+    if ((hasUk && hasRu) || (!hasUk && !hasRu)) return false;
+
+    const translated = await this.translationService.ensureTranslations(listing);
+    if (!translated || translated === listing.description) return false;
+
+    // Check if translation actually added something new
+    const newUk = translated.uk?.trim();
+    const newRu = translated.ru?.trim();
+    if (newUk === listing.description.uk?.trim() && newRu === listing.description.ru?.trim()) {
+      return false;
+    }
+
+    // Save translation to DB
+    listing.description = translated;
+    await this.dataSource.query(
+      `UPDATE unified_listings SET description = $1 WHERE id = $2`,
+      [JSON.stringify(translated), listing.id],
+    );
+
+    return true;
   }
 
   /** Convert raw DB row to UnifiedListing-like object */
