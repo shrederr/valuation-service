@@ -264,7 +264,17 @@ export class ComplexMatcherService implements OnModuleInit {
     if (textMatch && textMatch.score >= 0.6) {
       const complex = this.complexes.find(c => c.id === textMatch.complexId);
       if (complex) {
-        return { complex, method: 'text' };
+        // Validate distance if listing has coordinates
+        if (lat && lng && complex.lat && complex.lng) {
+          const dist = this.haversineDistance(lat, lng, complex.lat, complex.lng);
+          if (dist > 50) {
+            // Complex is too far — likely a false text match, skip
+          } else {
+            return { complex, method: 'text' };
+          }
+        } else {
+          return { complex, method: 'text' };
+        }
       }
     }
 
@@ -276,15 +286,33 @@ export class ComplexMatcherService implements OnModuleInit {
       }
     }
 
-    // 3. Use text match even with lower score
+    // 3. Use text match even with lower score (still validate distance)
     if (textMatch && textMatch.score >= 0.5) {
       const complex = this.complexes.find(c => c.id === textMatch.complexId);
       if (complex) {
-        return { complex, method: 'text' };
+        if (lat && lng && complex.lat && complex.lng) {
+          const dist = this.haversineDistance(lat, lng, complex.lat, complex.lng);
+          if (dist <= 50) {
+            return { complex, method: 'text' };
+          }
+        } else {
+          return { complex, method: 'text' };
+        }
       }
     }
 
     return { complex: null, method: null };
+  }
+
+  /** Haversine distance in km */
+  private haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
   private mapRowToComplex(row: any): ApartmentComplex {

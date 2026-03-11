@@ -105,49 +105,16 @@ export class AggregatorPropertyMapper {
     }
 
     // 2. Resolve geo and street
+    // ALWAYS resolve geoId from listing coordinates first (don't trust complex or source)
     let geoResolution: GeoResolutionResult | null = null;
     let geoId: number | undefined = undefined;
     let streetId: number | undefined = undefined;
 
-    // If complex found with known coordinates → use complex coordinates for street resolution (more accurate)
     const complexData = complexMatch ? this.complexMatcherService.getComplexById(complexMatch.complexId) : null;
+    const textForMatching = this.buildTextForMatching(data);
 
-    if (complexData?.streetId) {
-      // Complex has a known street → use it directly
-      streetId = complexData.streetId;
-      geoId = complexData.geoId;
-
-      // Still resolve geoId from coordinates if complex doesn't have one
-      if (!geoId && data.lng && data.lat) {
-        geoResolution = await this.geoLookupService.resolveGeoForListingWithText(
-          data.lng, data.lat, undefined,
-        );
-        geoId = geoResolution.geoId ?? undefined;
-      }
-
-      this.logger.debug(
-        `Using complex street for property ${data.id}: streetId=${streetId}, geoId=${geoId}`,
-      );
-    } else if (complexData?.lat && complexData?.lng) {
-      // Complex has accurate coordinates → use them for street resolution
-      const textForMatching = this.buildTextForMatching(data);
-      geoResolution = await this.geoLookupService.resolveGeoForListingWithText(
-        complexData.lng,
-        complexData.lat,
-        textForMatching,
-      );
-
-      geoId = geoResolution.geoId ?? undefined;
-      streetId = geoResolution.streetId ?? undefined;
-
-      this.logger.debug(
-        `Using complex coords for property ${data.id}: geoId=${geoId}, streetId=${streetId}`,
-      );
-    } else if (data.lng && data.lat) {
-      // No complex → resolve by listing coordinates
-      const textForMatching = this.buildTextForMatching(data);
-
-      // For OLX: skip nearest street fallback (coordinates are approximate)
+    // Step 1: Always resolve geo from LISTING coordinates (source of truth)
+    if (data.lng && data.lat) {
       geoResolution = await this.geoLookupService.resolveGeoForListingWithText(
         data.lng,
         data.lat,
@@ -155,15 +122,52 @@ export class AggregatorPropertyMapper {
         undefined,
         isOlx, // skipNearestFallback for OLX
       );
-
       geoId = geoResolution.geoId ?? undefined;
       streetId = geoResolution.streetId ?? undefined;
+    }
 
-      if (geoResolution.streetMatchMethod && geoResolution.streetMatchMethod !== 'nearest') {
+    // Step 2: If complex matched, use its street ONLY if same geo (validate distance)
+    if (complexData && geoId) {
+      if (complexData.streetId && complexData.geoId === geoId) {
+        // Complex is in the same geo → trust its street
+        streetId = complexData.streetId;
         this.logger.debug(
-          `Street matched by ${geoResolution.streetMatchMethod} for aggregator property ${data.id}: streetId=${streetId}`,
+          `Using complex street for property ${data.id}: streetId=${streetId}, geoId=${geoId}`,
         );
+      } else if (complexData.lat && complexData.lng) {
+        // Complex has coordinates → check distance before trusting
+        const dist = this.haversineDistance(data.lat!, data.lng!, complexData.lat, complexData.lng);
+        if (dist > 50) {
+          // Complex is > 50km away → false match, discard
+          this.logger.warn(
+            `Complex match discarded for property ${data.id}: ${complexMatch!.complexName} is ${Math.round(dist)}km away`,
+          );
+          complexId = undefined;
+          complexMatch = null;
+        } else {
+          // Complex is nearby → use its coords for better street resolution
+          const complexGeo = await this.geoLookupService.resolveGeoForListingWithText(
+            complexData.lng, complexData.lat, textForMatching,
+          );
+          // Only use complex street if it resolved to the same geo
+          if (complexGeo.geoId === geoId) {
+            streetId = complexGeo.streetId ?? streetId;
+          }
+        }
       }
+    } else if (complexData && !geoId && complexData.lat && complexData.lng) {
+      // No listing coordinates → resolve from complex coordinates
+      geoResolution = await this.geoLookupService.resolveGeoForListingWithText(
+        complexData.lng, complexData.lat, textForMatching,
+      );
+      geoId = geoResolution.geoId ?? undefined;
+      streetId = geoResolution.streetId ?? undefined;
+    }
+
+    if (geoResolution?.streetMatchMethod && geoResolution.streetMatchMethod !== 'nearest') {
+      this.logger.debug(
+        `Street matched by ${geoResolution.streetMatchMethod} for aggregator property ${data.id}: streetId=${streetId}`,
+      );
     }
 
     // Map condition and houseType using platform-specific mappings
@@ -421,5 +425,16 @@ export class AggregatorPropertyMapper {
   private extractInt(value: unknown): number | null {
     const num = this.extractNumber(value);
     return num !== null ? Math.round(num) : null;
+  }
+
+  /** Haversine distance in km between two lat/lng points */
+  private haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 }
