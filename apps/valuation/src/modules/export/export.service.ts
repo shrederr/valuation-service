@@ -227,6 +227,109 @@ export class ExportService {
     return { status: 'exported', crmId: result.id, exportDto: dto };
   }
 
+  async exportByPlatforms(opts: {
+    platforms: string[];
+    perPlatform: number;
+    realtyType?: string;
+  }): Promise<{
+    total: { exported: number; duplicates: number; errors: number; skipped: number };
+    byPlatform: Record<string, { exported: number; duplicates: number; errors: number; skipped: number; crmIds: { sourceId: number; crmId: string }[] }>;
+  }> {
+    if (this.running) {
+      throw new Error('Export already running');
+    }
+
+    this.running = true;
+    const total = { exported: 0, duplicates: 0, errors: 0, skipped: 0 };
+    const byPlatform: Record<string, { exported: number; duplicates: number; errors: number; skipped: number; crmIds: { sourceId: number; crmId: string }[] }> = {};
+
+    try {
+      this.logger.log(`Export by platforms started: ${opts.platforms.join(', ')}, ${opts.perPlatform} per platform`);
+
+      for (const platform of opts.platforms) {
+        const platformStats = { exported: 0, duplicates: 0, errors: 0, skipped: 0, crmIds: [] as { sourceId: number; crmId: string }[] };
+        byPlatform[platform] = platformStats;
+
+        const conditions = [
+          `source_type = 'aggregator'`,
+          `is_active = true`,
+          `export_status IS NULL`,
+          `deleted_at IS NULL`,
+          `price > 0`,
+          `total_area > 0`,
+          `realty_platform = $1`,
+        ];
+        const params: unknown[] = [platform];
+        let paramIdx = 2;
+
+        if (opts.realtyType) {
+          conditions.push(`realty_type = $${paramIdx}`);
+          params.push(opts.realtyType);
+          paramIdx++;
+        }
+
+        params.push(opts.perPlatform);
+
+        const listings = await this.dataSource.query(
+          `SELECT * FROM unified_listings
+           WHERE ${conditions.join(' AND ')}
+           ORDER BY published_at DESC NULLS LAST
+           LIMIT $${paramIdx}`,
+          params,
+        );
+
+        this.logger.log(`Platform ${platform}: ${listings.length} listings found`);
+
+        for (const raw of listings) {
+          try {
+            const listing = this.hydrate(raw);
+
+            const dedup = await this.dedupCheckService.isDuplicate(listing);
+            if (dedup.isDuplicate) {
+              await this.updateExportStatus(listing.id, 'duplicate', null,
+                `Matched ${dedup.matchLevel}: ${dedup.matchedId}${dedup.similarity ? ` (sim=${dedup.similarity.toFixed(3)})` : ''}`);
+              platformStats.duplicates++;
+              total.duplicates++;
+              continue;
+            }
+
+            await this.translateIfNeeded(listing);
+
+            const dto = await this.toCrmMapper.map(listing);
+            const result = await this.crmClientService.importObject(dto);
+            if (!result.success) {
+              await this.updateExportStatus(listing.id, 'error', null, result.error);
+              platformStats.errors++;
+              total.errors++;
+              continue;
+            }
+
+            await this.updateExportStatus(listing.id, 'exported', result.id || null);
+            platformStats.exported++;
+            total.exported++;
+            platformStats.crmIds.push({ sourceId: listing.sourceId, crmId: result.id! });
+
+            await new Promise(r => setTimeout(r, 150));
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            await this.updateExportStatus(raw.id, 'error', null, msg);
+            platformStats.errors++;
+            total.errors++;
+            this.logger.error(`Export error for ${raw.id} (${platform}): ${msg}`);
+          }
+        }
+
+        this.logger.log(`Platform ${platform} done: exported=${platformStats.exported}, duplicates=${platformStats.duplicates}, errors=${platformStats.errors}`);
+      }
+    } finally {
+      this.running = false;
+      this.lastRunAt = new Date();
+      this.lastRunStats = total;
+    }
+
+    return { total, byPlatform };
+  }
+
   async previewExport(listingId: string) {
     const rows = await this.dataSource.query(
       `SELECT * FROM unified_listings WHERE id = $1`,

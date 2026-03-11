@@ -23,6 +23,29 @@ export class ExportRunDto {
   geoId?: number;
 }
 
+export class ExportByPlatformsDto {
+  @ApiPropertyOptional({ default: 25, description: 'Objects per platform' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(500)
+  @Type(() => Number)
+  perPlatform?: number;
+
+  @ApiPropertyOptional({
+    description: 'Platforms to export from (default: olx, realtorUa, domRia, mlsUkraine)',
+    type: [String],
+  })
+  @IsOptional()
+  @IsString({ each: true })
+  platforms?: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  realtyType?: string;
+}
+
 export class ExportStatsDto {
   total: number;
   exported: number;

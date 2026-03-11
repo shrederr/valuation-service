@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Param, Body, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { ExportService } from './export.service';
-import { ExportRunDto } from './dto';
+import { ExportRunDto, ExportByPlatformsDto } from './dto';
 
 @ApiTags('Export')
 @Controller('api/v1/export')
@@ -41,6 +41,18 @@ export class ExportController {
   @ApiOperation({ summary: 'Export a single listing to CRM' })
   async exportSingle(@Param('id') id: string) {
     return this.exportService.exportSingle(id);
+  }
+
+  @Post('run-by-platforms')
+  @ApiOperation({ summary: 'Export N objects per platform (balanced export)' })
+  async runByPlatforms(@Body() body: ExportByPlatformsDto) {
+    const platforms = body.platforms || ['olx', 'realtorUa', 'domRia', 'mlsUkraine'];
+    const perPlatform = body.perPlatform || 25;
+    return this.exportService.exportByPlatforms({
+      platforms,
+      perPlatform,
+      realtyType: body.realtyType,
+    });
   }
 
   @Post('translate-batch')
