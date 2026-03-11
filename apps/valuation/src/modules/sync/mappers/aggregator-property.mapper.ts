@@ -50,12 +50,14 @@ export class AggregatorPropertyMapper {
     const totalFloors = this.extractInt(attrs.floors_count ?? attrs.totalFloors);
     const price = data.price;
 
-    // Land area: from attributes or parse from primaryData (sotki → m²)
-    const landAreaFromAttrs = this.extractNumber(attrs.landArea);
+    // Land area: from attributes (square_land_total is in sotki) or parse from primaryData
+    const landAreaSotki = this.extractNumber(attrs.square_land_total ?? attrs.landArea);
     const landAreaFromPrimary = this.extractLandAreaFromPrimaryData(
       data.realtyPlatform, data.primaryData,
     );
-    const landArea = landAreaFromAttrs ?? landAreaFromPrimary;
+    // square_land_total from aggregator is already in sotki, convert to m² for storage
+    // extractLandAreaFromPrimaryData already returns m²
+    const landArea = landAreaSotki != null ? Math.round(landAreaSotki * 100 * 100) / 100 : landAreaFromPrimary;
 
     // Price per meter: for area/land use landArea, otherwise totalArea
     const existingPricePerMeter = this.extractNumber(attrs.price_sqr ?? attrs.pricePerMeter);

@@ -145,7 +145,15 @@ export class ToCrmMapper {
     if (listing.totalArea) result.square_total = listing.totalArea;
     if (listing.livingArea) result.square_living = listing.livingArea;
     if (listing.kitchenArea) result.square_kitchen = listing.kitchenArea;
-    if (listing.landArea) result.square_land_total = Math.round((listing.landArea / 100) * 100) / 100;
+    // Land area: prefer attributes.square_land_total (already in sotki from aggregator)
+    // Fallback to listing.landArea (m²) → convert to sotki (/100)
+    const landSotki = this.extractNumber(attrs.square_land_total);
+    if (landSotki && landSotki > 0) {
+      result.square_land_total = landSotki;
+    } else if (listing.landArea && listing.landArea > 0 && listing.landArea < 10000000) {
+      // Sanity check: max ~100K sotki = 10M m² (anything bigger is corrupted data)
+      result.square_land_total = Math.round((listing.landArea / 100) * 100) / 100;
+    }
 
     // Rooms & floors
     if (listing.rooms) result.rooms_count = listing.rooms;
@@ -252,6 +260,12 @@ export class ToCrmMapper {
   }
 
   /** Build photo URLs, handling platform-specific formats */
+  private extractNumber(value: unknown): number | null {
+    if (value === null || value === undefined) return null;
+    const num = typeof value === 'number' ? value : parseFloat(String(value));
+    return isNaN(num) ? null : num;
+  }
+
   private buildPhotos(listing: UnifiedListing, extractedPhotos: string[] | null): string[] | null {
     // domRia: photos is an object {id: {file: "dom/photo/..."}} — need to build full URLs
     if (listing.realtyPlatform === 'domRia') {
