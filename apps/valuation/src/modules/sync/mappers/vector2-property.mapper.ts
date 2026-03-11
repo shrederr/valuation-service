@@ -94,7 +94,7 @@ export class Vector2PropertyMapper {
       sourceGlobalId: row.global_id || undefined,
       dealType,
       realtyType,
-      geoId: (idMappings?.geo.get(row.fk_geo_id) ?? row.fk_geo_id) || undefined,
+      geoId: (idMappings ? idMappings.geo.get(row.fk_geo_id) : row.fk_geo_id) || undefined,
       streetId: (row.geo_street && idMappings ? idMappings.street.get(row.geo_street) : row.geo_street) || undefined,
       topzoneId: undefined, // topzones table is empty, skip to avoid FK violation
       complexId: this.resolveComplexId(attrs.geo_zk, idMappings) || undefined,
