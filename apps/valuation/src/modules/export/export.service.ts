@@ -134,8 +134,9 @@ export class ExportService {
         // Map and send
         const dto = await this.toCrmMapper.map(listing);
 
-        // Skip objects without square_living (can't appear on CRM site)
-        if (!dto.attributes?.square_living) {
+        // Skip apartments without square_living (can't appear on CRM site).
+        // Commercial and houses don't require living area.
+        if (listing.realtyType === 'apartment' && !dto.attributes?.square_living) {
           await this.updateExportStatus(listing.id, 'skipped', null, 'Missing square_living: no living_area, no kitchen_area to calculate');
           stats.skipped++;
           continue;
@@ -321,8 +322,9 @@ export class ExportService {
 
             const dto = await this.toCrmMapper.map(listing);
 
-            // Skip objects without square_living (can't appear on CRM site)
-            if (!dto.attributes?.square_living) {
+            // Skip apartments without square_living (can't appear on CRM site).
+            // Commercial and houses don't require living area.
+            if (listing.realtyType === 'apartment' && !dto.attributes?.square_living) {
               await this.updateExportStatus(listing.id, 'skipped', null, 'Missing square_living: no living_area, no kitchen_area to calculate');
               platformStats.skipped++;
               total.skipped++;

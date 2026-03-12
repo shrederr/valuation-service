@@ -225,10 +225,15 @@ export class AttributeMapperService {
   }
 
   private mapDomriaHouseType(primaryData: Record<string, unknown>): string | undefined {
-    const wallType = primaryData.wall_type as string | undefined;
-    if (!wallType) return undefined;
-
-    return DOMRIA_WALL_TYPE_MAP[wallType.toLowerCase()];
+    // DomRia has no "project type" characteristic. Use realty_type_name for houses.
+    // wall_type is building MATERIAL, not project type — mapped separately to housing_material.
+    const typeName = (primaryData.realty_type_name as string)?.toLowerCase();
+    if (typeName) {
+      if (typeName.includes('таунхаус')) return 'Таунхаус';
+      if (typeName.includes('дуплекс')) return 'Дуплекс';
+    }
+    // For apartments: no reliable project type from DomRia → leave empty
+    return undefined;
   }
 
   // ============================================================

@@ -125,8 +125,10 @@ const REVERSE_LOCATION_ROOMS_MAP: Record<string, number> = {
   'Євро трійка': 26,
 };
 
-/** Reverse mapping: RealtorUA border value → CRM housing_material ID */
+/** Reverse mapping: housing material string → CRM housing_material ID.
+ *  Used by RealtorUA (border), DomRia (wall_type), and description parsing. */
 const REVERSE_HOUSING_MATERIAL_MAP: Record<string, number> = {
+  // RealtorUA border values
   'Цегляна': 2,            // Цегла
   'Стара цегла': 2,        // Цегла
   'Українська цегла': 2,   // Цегла
@@ -139,6 +141,26 @@ const REVERSE_HOUSING_MATERIAL_MAP: Record<string, number> = {
   'Бетонно монолітний': 26, // Моноліт
   'Монолітно-каркасна': 26, // Моноліт
   'Газоблок': 28,           // Газобетон
+  // DomRia wall_type values (Russian from API)
+  'кирпич': 2,              // Цегла
+  'красный кирпич': 2,
+  'силикатный кирпич': 2,
+  'керамический кирпич': 2,
+  'цегла': 2,
+  'панель': 7,              // Панельний
+  'газоблок': 28,           // Газобетон
+  'газобетон': 28,
+  'пеноблок': 28,
+  'монолит': 26,            // Моноліт
+  'монолитно-каркасный': 26,
+  'монолитно-кирпичный': 26,
+  'монолитно-блочный': 26,
+  'монолитный железобетон': 26,
+  'железобетон': 26,
+  'керамический блок': 8,   // Блоковий
+  'блочно-кирпичный': 8,
+  'керамзитобетон': 8,
+  'ракушечник (ракушняк)': 2,
 };
 
 /** object_type defaults per realty type for CRM import */
@@ -345,7 +367,9 @@ export class ToCrmMapper {
       }
     }
     // Reverse map from houseType string
-    if (listing.houseType) {
+    // For DomRia: houseType was incorrectly set from wall_type (material, not project),
+    // so skip it and use realty_type_name for houses instead
+    if (listing.houseType && listing.realtyPlatform !== 'domRia') {
       const mapped = REVERSE_PROJECT_MAP[listing.houseType];
       if (mapped) return mapped;
     }
@@ -395,6 +419,16 @@ export class ToCrmMapper {
     // Extract from primaryData
     const pd = (listing as any).primaryData;
     if (pd) {
+      // domRia: wall_type → housing material (wall_type is building MATERIAL, not project type)
+      if (listing.realtyPlatform === 'domRia' && pd.wall_type) {
+        const mapped = REVERSE_HOUSING_MATERIAL_MAP[pd.wall_type];
+        if (mapped) return mapped;
+        // Also try wall_type_uk
+        if (pd.wall_type_uk) {
+          const mappedUk = REVERSE_HOUSING_MATERIAL_MAP[pd.wall_type_uk];
+          if (mappedUk) return mappedUk;
+        }
+      }
       // realtorUa: main_params.border → housing material
       if (pd.main_params?.border) {
         const mapped = REVERSE_HOUSING_MATERIAL_MAP[pd.main_params.border];
