@@ -3,6 +3,7 @@ import { SourceType, DealType, RealtyType, AttributeMapperService } from '@libs/
 import { UnifiedListing } from '@libs/database';
 import { AggregatorPropertyEventDto } from '../dto';
 import { GeoLookupService, GeoResolutionResult } from '../../osm/geo-lookup.service';
+import { StreetMatcherService } from '../../osm/street-matcher.service';
 import { ComplexMatcherService } from '../services/complex-matcher.service';
 
 export interface ComplexMatchInfo {
@@ -27,6 +28,7 @@ export class AggregatorPropertyMapper {
 
   constructor(
     private readonly geoLookupService: GeoLookupService,
+    private readonly streetMatcherService: StreetMatcherService,
     private readonly attributeMapperService: AttributeMapperService,
     private readonly complexMatcherService: ComplexMatcherService,
   ) {}
@@ -113,17 +115,29 @@ export class AggregatorPropertyMapper {
     const complexData = complexMatch ? this.complexMatcherService.getComplexById(complexMatch.complexId) : null;
     const textForMatching = this.buildTextForMatching(data);
 
-    // Step 1: Always resolve geo from LISTING coordinates (source of truth)
+    // Step 1: Resolve geo from LISTING coordinates (source of truth)
+    // For OLX: only resolve geoId from coordinates, street ONLY from text (coordinates are unreliable)
     if (data.lng && data.lat) {
       geoResolution = await this.geoLookupService.resolveGeoForListingWithText(
         data.lng,
         data.lat,
-        textForMatching,
+        isOlx ? undefined : textForMatching, // OLX: don't use text for coordinate-based street matching
         undefined,
         isOlx, // skipNearestFallback for OLX
       );
       geoId = geoResolution.geoId ?? undefined;
-      streetId = geoResolution.streetId ?? undefined;
+      streetId = isOlx ? undefined : (geoResolution.streetId ?? undefined);
+    }
+
+    // For OLX: resolve street by text search within geo polygon (no coordinates)
+    if (isOlx && geoId && textForMatching) {
+      const textStreetResult = await this.streetMatcherService.resolveStreetByText(textForMatching, geoId);
+      if (textStreetResult.streetId) {
+        streetId = textStreetResult.streetId;
+        this.logger.debug(
+          `OLX street resolved by text for property ${data.id}: streetId=${streetId} (${textStreetResult.matchMethod}, confidence=${textStreetResult.confidence.toFixed(2)})`,
+        );
+      }
     }
 
     // Step 2: If complex matched, use its street ONLY if same geo (validate distance)
