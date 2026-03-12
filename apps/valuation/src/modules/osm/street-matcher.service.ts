@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Street, StreetRepository } from '@libs/database';
 import { MultiLanguageDto } from '@libs/common';
 
-export type StreetMatchMethod = 'text_parsed' | 'text_found' | 'nearest';
+export type StreetMatchMethod = 'text_parsed' | 'text_found' | 'text_db_search' | 'nearest';
 
 export interface StreetMatchResult {
   streetId: number | null;
@@ -123,6 +123,55 @@ export class StreetMatcherService {
       matchMethod: 'nearest',
       confidence: this.calculateDistanceConfidence(nearest.distanceMeters),
     };
+  }
+
+  /**
+   * Resolve street by text only (no coordinates). Used for OLX where coords are unreliable.
+   * Parses street name from text → gets all streets in geo → fuzzy match among them.
+   */
+  public async resolveStreetByText(
+    text: string,
+    geoId: number,
+  ): Promise<StreetMatchResult> {
+    // 1. Parse street name from text
+    const parsed = this.extractStreetFromText(text);
+    if (!parsed) {
+      return { streetId: null, matchMethod: 'nearest', confidence: 0 };
+    }
+
+    // 2. Get all streets in this geo
+    const streets = await this.streetRepository.findByGeoId(geoId);
+    if (!streets.length) {
+      return { streetId: null, matchMethod: 'nearest', confidence: 0 };
+    }
+
+    // 3. Fuzzy match parsed name against all geo streets
+    const normalizedParsed = this.normalizeStreetName(parsed.name);
+    let bestMatch: { street: Street; score: number } | null = null;
+
+    for (const street of streets) {
+      const names = this.getStreetNames(street);
+      for (const name of names) {
+        const normalized = this.normalizeStreetName(name);
+        const score = this.calculateSimilarity(normalizedParsed, normalized);
+        if (score >= 0.6 && (!bestMatch || score > bestMatch.score)) {
+          bestMatch = { street, score };
+        }
+      }
+    }
+
+    if (bestMatch) {
+      this.logger.debug(
+        `Street resolved by text DB search: "${parsed.name}" -> ${bestMatch.street.name?.uk} (score: ${bestMatch.score.toFixed(2)}, geoId: ${geoId})`,
+      );
+      return {
+        streetId: bestMatch.street.id,
+        matchMethod: 'text_db_search',
+        confidence: bestMatch.score,
+      };
+    }
+
+    return { streetId: null, matchMethod: 'nearest', confidence: 0 };
   }
 
   /**

@@ -191,18 +191,19 @@ export class ToCrmMapper {
     if (listing.livingArea) {
       result.square_living = listing.livingArea;
     } else {
-      // Fallback: try primaryData, then estimate from totalArea
+      // Fallback: try primaryData, then calculate from total - kitchen
       const pdLiving = this.extractLivingAreaFromPrimaryData(listing);
       if (pdLiving && pdLiving > 0) {
         result.square_living = pdLiving;
-      } else if (listing.totalArea && listing.totalArea > 0) {
-        // Estimate: living ≈ total - kitchen - (10-15% utility)
-        const kitchen = listing.kitchenArea || 0;
-        const estimated = Math.round(listing.totalArea - kitchen - listing.totalArea * 0.1);
-        if (estimated > 0 && estimated < listing.totalArea) {
-          result.square_living = estimated;
+      } else if (listing.totalArea && listing.totalArea > 0 && listing.kitchenArea && listing.kitchenArea > 0) {
+        // living = total - kitchen (only when both values are available)
+        const calculated = Math.round(listing.totalArea - listing.kitchenArea);
+        if (calculated > 0 && calculated < listing.totalArea) {
+          result.square_living = calculated;
         }
       }
+      // If no living area could be determined → square_living stays undefined
+      // Export service will skip objects without square_living
     }
     if (listing.kitchenArea) result.square_kitchen = listing.kitchenArea;
     // Land area: prefer attributes.square_land_total (already in sotki from aggregator)

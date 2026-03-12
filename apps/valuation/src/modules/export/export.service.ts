@@ -7,6 +7,7 @@ import { DedupCheckService } from './services/dedup-check.service';
 import { TranslationService } from './services/translation.service';
 import { ToCrmMapper } from './mappers/to-crm.mapper';
 import { CrmClientService } from './services/crm-client.service';
+import { StreetMatcherService } from '../osm/street-matcher.service';
 import { ExportStatsDto } from './dto';
 
 @Injectable()
@@ -23,6 +24,7 @@ export class ExportService {
     private readonly configService: ConfigService,
     private readonly dedupCheckService: DedupCheckService,
     private readonly translationService: TranslationService,
+    private readonly streetMatcherService: StreetMatcherService,
     private readonly toCrmMapper: ToCrmMapper,
     private readonly crmClientService: CrmClientService,
   ) {
@@ -126,8 +128,19 @@ export class ExportService {
         // Translate description if needed (UK↔RU)
         await this.translateIfNeeded(listing);
 
+        // OLX: re-resolve street from text (coordinates unreliable)
+        await this.fixOlxStreet(listing);
+
         // Map and send
         const dto = await this.toCrmMapper.map(listing);
+
+        // Skip objects without square_living (can't appear on CRM site)
+        if (!dto.attributes?.square_living) {
+          await this.updateExportStatus(listing.id, 'skipped', null, 'Missing square_living: no living_area, no kitchen_area to calculate');
+          stats.skipped++;
+          continue;
+        }
+
         const result = await this.crmClientService.importObject(dto);
         if (!result.success) {
           await this.updateExportStatus(listing.id, 'error', null, result.error);
@@ -213,8 +226,16 @@ export class ExportService {
     // Translate description if needed
     await this.translateIfNeeded(listing);
 
+    // OLX: re-resolve street from text (coordinates unreliable)
+    await this.fixOlxStreet(listing);
+
     // Map
     const dto = await this.toCrmMapper.map(listing);
+
+    // Check square_living
+    if (!dto.attributes?.square_living) {
+      return { error: 'Missing square_living: no living_area, no kitchen_area to calculate', exportDto: dto };
+    }
 
     // Send to CRM
     const result = await this.crmClientService.importObject(dto);
@@ -295,7 +316,19 @@ export class ExportService {
 
             await this.translateIfNeeded(listing);
 
+            // OLX: re-resolve street from text (coordinates unreliable)
+            await this.fixOlxStreet(listing);
+
             const dto = await this.toCrmMapper.map(listing);
+
+            // Skip objects without square_living (can't appear on CRM site)
+            if (!dto.attributes?.square_living) {
+              await this.updateExportStatus(listing.id, 'skipped', null, 'Missing square_living: no living_area, no kitchen_area to calculate');
+              platformStats.skipped++;
+              total.skipped++;
+              continue;
+            }
+
             const result = await this.crmClientService.importObject(dto);
             if (!result.success) {
               await this.updateExportStatus(listing.id, 'error', null, result.error);
@@ -463,6 +496,54 @@ export class ExportService {
     );
 
     return true;
+  }
+
+  /**
+   * For OLX listings: re-resolve street from text (coordinates are unreliable).
+   * Updates listing.streetId and saves to DB if a better match is found.
+   */
+  private async fixOlxStreet(listing: UnifiedListing): Promise<void> {
+    if (listing.realtyPlatform !== 'olx' || !listing.geoId) return;
+
+    const text = this.buildTextForStreetMatching(listing);
+    if (!text) return;
+
+    const streetResult = await this.streetMatcherService.resolveStreetByText(text, listing.geoId);
+    if (!streetResult.streetId) return;
+
+    // Only update if different from current
+    if (streetResult.streetId !== listing.streetId) {
+      this.logger.log(
+        `OLX street fix: sourceId=${listing.sourceId} streetId ${listing.streetId || 'null'} → ${streetResult.streetId} (${streetResult.matchMethod}, confidence=${streetResult.confidence.toFixed(2)})`,
+      );
+      listing.streetId = streetResult.streetId;
+      await this.dataSource.query(
+        'UPDATE unified_listings SET street_id = $1 WHERE id = $2',
+        [streetResult.streetId, listing.id],
+      );
+    }
+  }
+
+  /** Build text for street matching from listing's primaryData and description */
+  private buildTextForStreetMatching(listing: UnifiedListing): string {
+    const parts: string[] = [];
+    const pd = (listing as any).primaryData;
+
+    if (pd) {
+      // OLX: location.pathName (e.g. "Київ > Печерський > вул. Грушевського")
+      if (pd.location && typeof pd.location === 'object') {
+        if (pd.location.pathName) parts.push(String(pd.location.pathName));
+      }
+      // Title often contains address
+      if (pd.title) parts.push(String(pd.title));
+    }
+
+    // Description
+    if (listing.description?.uk) {
+      parts.push(listing.description.uk);
+    }
+
+    return parts.join(' ');
   }
 
   /** Convert raw DB row to UnifiedListing-like object */

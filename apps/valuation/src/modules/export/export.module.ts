@@ -9,11 +9,13 @@ import { CrmClientService } from './services/crm-client.service';
 import { PrimaryDataExtractor } from './services/primary-data-extractor';
 import { TranslationService } from './services/translation.service';
 import { ToCrmMapper } from './mappers/to-crm.mapper';
+import { OsmModule } from '../osm/osm.module';
 
 @Module({
   imports: [
     ConfigModule,
     HttpModule.register({ timeout: 25000 }),
+    OsmModule,
   ],
   controllers: [ExportController],
   providers: [
