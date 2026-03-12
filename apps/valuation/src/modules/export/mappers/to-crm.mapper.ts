@@ -188,7 +188,22 @@ export class ToCrmMapper {
 
     // Area
     if (listing.totalArea) result.square_total = listing.totalArea;
-    if (listing.livingArea) result.square_living = listing.livingArea;
+    if (listing.livingArea) {
+      result.square_living = listing.livingArea;
+    } else {
+      // Fallback: try primaryData, then estimate from totalArea
+      const pdLiving = this.extractLivingAreaFromPrimaryData(listing);
+      if (pdLiving && pdLiving > 0) {
+        result.square_living = pdLiving;
+      } else if (listing.totalArea && listing.totalArea > 0) {
+        // Estimate: living ≈ total - kitchen - (10-15% utility)
+        const kitchen = listing.kitchenArea || 0;
+        const estimated = Math.round(listing.totalArea - kitchen - listing.totalArea * 0.1);
+        if (estimated > 0 && estimated < listing.totalArea) {
+          result.square_living = estimated;
+        }
+      }
+    }
     if (listing.kitchenArea) result.square_kitchen = listing.kitchenArea;
     // Land area: prefer attributes.square_land_total (already in sotki from aggregator)
     // Fallback to listing.landArea (m²) → convert to sotki (/100)
@@ -324,6 +339,50 @@ export class ToCrmMapper {
         if (mapped) return mapped;
       }
     }
+    return undefined;
+  }
+
+  /** Extract living area from primaryData (OLX, RealtorUA, DomRia, MLS) */
+  private extractLivingAreaFromPrimaryData(listing: UnifiedListing): number | undefined {
+    const pd = (listing as any).primaryData;
+    if (!pd) return undefined;
+
+    // OLX: params key="living_area"
+    if (Array.isArray(pd.params)) {
+      const la = pd.params.find((p: any) => p?.key === 'living_area');
+      if (la) {
+        const val = parseFloat(la.normalizedValue || la.value);
+        if (!isNaN(val) && val > 0) return val;
+      }
+    }
+
+    // RealtorUA: main_params.living_square or total fields
+    if (pd.main_params?.living_square) {
+      const val = parseFloat(pd.main_params.living_square);
+      if (!isNaN(val) && val > 0) return val;
+    }
+
+    // DomRia: characteristics living_area_total
+    if (pd.characteristics?.living_area_total) {
+      const val = parseFloat(pd.characteristics.living_area_total);
+      if (!isNaN(val) && val > 0) return val;
+    }
+    if (Array.isArray(pd.characteristics_values)) {
+      const la = pd.characteristics_values.find((c: any) =>
+        c?.characteristic_id === 209 || c?.name === 'Житлова площа',
+      );
+      if (la) {
+        const val = parseFloat(la.value);
+        if (!isNaN(val) && val > 0) return val;
+      }
+    }
+
+    // MLS: params key with living area
+    if (pd.zagalna_ploscha_zhytlova || pd.living_area) {
+      const val = parseFloat(pd.zagalna_ploscha_zhytlova || pd.living_area);
+      if (!isNaN(val) && val > 0) return val;
+    }
+
     return undefined;
   }
 
