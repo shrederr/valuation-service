@@ -72,6 +72,12 @@ const REVERSE_PROJECT_MAP: Record<string, number> = {
   'Київка': 39,
   // Housing material fallbacks (когда houseType = материал стен)
   'Газобетон': 10,
+  // RealtorUA variants (description.details "Тип будинку - ...")
+  'Хрущівка': 4,
+  'Спец': 10,         // Спецпроект
+  'Чеський проект': 8, // Чеська
+  'Дореволюційний': 33,
+  'новобудова': 7,     // Новобуд
 };
 
 /** Reverse mapping: layout string → CRM location_rooms ID */
@@ -117,6 +123,22 @@ const REVERSE_LOCATION_ROOMS_MAP: Record<string, number> = {
   'Кухня-вітальня': 25,
   'Кухня-гостиная': 25,
   'Євро трійка': 26,
+};
+
+/** Reverse mapping: RealtorUA border value → CRM housing_material ID */
+const REVERSE_HOUSING_MATERIAL_MAP: Record<string, number> = {
+  'Цегляна': 2,            // Цегла
+  'Стара цегла': 2,        // Цегла
+  'Українська цегла': 2,   // Цегла
+  'Панельна': 7,            // Панельний
+  'Стара панель': 7,        // Панельний
+  'Типова панель': 7,       // Панельний
+  'Українська панель': 7,   // Панельний
+  'Утеплена панель': 7,     // Панельний
+  'Блочна': 8,              // Блоковий
+  'Бетонно монолітний': 26, // Моноліт
+  'Монолітно-каркасна': 26, // Моноліт
+  'Газоблок': 28,           // Газобетон
 };
 
 /** object_type defaults per realty type for CRM import */
@@ -227,8 +249,11 @@ export class ToCrmMapper {
     result.project = this.resolveProject(listing, attrs);
     result.location_rooms = this.resolveLocationRooms(listing, attrs);
 
+    // Housing material — resolve from attrs or primaryData
+    result.housing_material = this.resolveHousingMaterial(listing, attrs);
+
     // Pass through remaining numeric attribute IDs
-    const numericPassthrough = ['housing_material', 'apartment_type', 'ceiling_height'] as const;
+    const numericPassthrough = ['apartment_type', 'ceiling_height'] as const;
     for (const key of numericPassthrough) {
       const val = attrs[key];
       if (val !== undefined && val !== null) {
@@ -334,10 +359,50 @@ export class ToCrmMapper {
           if (mapped) return mapped;
         }
       }
-      // realtorUa: main_params.border
+      // realtorUa: description.details contains "Тип будинку - Хрущівка"
+      const details = pd.description?.details;
+      if (typeof details === 'string') {
+        const houseTypeMatch = details.match(/Тип будинку\s*[-–—]\s*([^,.]+)/);
+        if (houseTypeMatch?.[1]) {
+          const houseTypeName = houseTypeMatch[1].trim();
+          const mapped = REVERSE_PROJECT_MAP[houseTypeName];
+          if (mapped) return mapped;
+        }
+      }
+      // realtorUa: main_params.border — some values ARE house types (Сталінка, Дореволюційний)
       if (pd.main_params?.border) {
         const mapped = REVERSE_PROJECT_MAP[pd.main_params.border];
         if (mapped) return mapped;
+      }
+    }
+    return undefined;
+  }
+
+  /** Resolve housing_material: attrs passthrough or extract from primaryData */
+  private resolveHousingMaterial(listing: UnifiedListing, attrs: Record<string, unknown>): number | undefined {
+    // If attrs has a CRM-range housing_material ID, use directly
+    const raw = attrs.housing_material;
+    if (raw !== undefined && raw !== null) {
+      const num = Number(raw);
+      if (!isNaN(num) && num >= 1 && num <= 40) return num;
+    }
+    // Extract from primaryData
+    const pd = (listing as any).primaryData;
+    if (pd) {
+      // realtorUa: main_params.border → housing material
+      if (pd.main_params?.border) {
+        const mapped = REVERSE_HOUSING_MATERIAL_MAP[pd.main_params.border];
+        if (mapped) return mapped;
+      }
+      // realtorUa: description.details contains "Технологія будівництва - Блочна"
+      const details = pd.description?.details;
+      if (typeof details === 'string') {
+        const techMatch = details.match(/Технологія будівництва\s*[-–—]\s*([^,.]+)/);
+        if (techMatch?.[1]) {
+          const materialName = techMatch[1].trim();
+          const mapped = REVERSE_HOUSING_MATERIAL_MAP[materialName];
+          if (mapped) return mapped;
+        }
       }
     }
     return undefined;
