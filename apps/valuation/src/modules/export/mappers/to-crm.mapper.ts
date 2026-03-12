@@ -317,10 +317,13 @@ export class ToCrmMapper {
   /** Resolve condition_type: reverse map from condition string → CRM ID */
   private resolveConditionType(listing: UnifiedListing, attrs: Record<string, unknown>): number | undefined {
     // If attrs has a small CRM-range condition_type, use directly (vector2 IDs: 1-24)
-    const raw = attrs.condition_type;
-    if (raw !== undefined && raw !== null) {
-      const num = Number(raw);
-      if (!isNaN(num) && num >= 1 && num <= 30) return num;
+    // Skip for realtorUa/domRia — their attrs.condition_type are platform-internal IDs, not CRM IDs
+    if (listing.realtyPlatform !== 'realtorUa' && listing.realtyPlatform !== 'domRia') {
+      const raw = attrs.condition_type;
+      if (raw !== undefined && raw !== null) {
+        const num = Number(raw);
+        if (!isNaN(num) && num >= 1 && num <= 30) return num;
+      }
     }
     // Reverse map from condition string
     if (listing.condition) {
@@ -333,10 +336,13 @@ export class ToCrmMapper {
   /** Resolve project (house type): reverse map from houseType string → CRM ID */
   private resolveProject(listing: UnifiedListing, attrs: Record<string, unknown>): number | undefined {
     // If attrs has a small CRM-range project, use directly (vector2 IDs go up to 39)
-    const raw = attrs.project;
-    if (raw !== undefined && raw !== null) {
-      const num = Number(raw);
-      if (!isNaN(num) && num >= 1 && num <= 40) return num;
+    // Skip for realtorUa/domRia — their attrs.project are platform-internal border IDs, not CRM IDs
+    if (listing.realtyPlatform !== 'realtorUa' && listing.realtyPlatform !== 'domRia') {
+      const raw = attrs.project;
+      if (raw !== undefined && raw !== null) {
+        const num = Number(raw);
+        if (!isNaN(num) && num >= 1 && num <= 40) return num;
+      }
     }
     // Reverse map from houseType string
     if (listing.houseType) {
