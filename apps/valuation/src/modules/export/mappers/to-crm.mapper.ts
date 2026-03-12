@@ -4,7 +4,7 @@ import { UnifiedListing } from '@libs/database';
 import { Vector2ExportDto, Vector2ExportAttributes } from '../dto';
 import { PrimaryDataExtractor } from '../services/primary-data-extractor';
 
-const DOMRIA_CDN = 'https://cdn.dom.ria.com/';
+const DOMRIA_CDN = 'https://cdn.riastatic.com/photos/';
 
 /** Reverse mapping: condition string → CRM condition_type ID */
 const REVERSE_CONDITION_MAP: Record<string, number> = {
