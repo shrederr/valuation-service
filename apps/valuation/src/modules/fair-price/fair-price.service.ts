@@ -73,14 +73,22 @@ export class FairPriceService {
     const subjectPrice = Number(subject.price) || 0;
     const verdict = this.priceVerdictService.determineVerdict(subjectPrice, priceStats);
 
+    // If Q1 === Q3 (all filtered prices very similar), add ±5% spread for visual bar
+    let rangeLow = priceStats.q1;
+    let rangeHigh = priceStats.q3;
+    if (rangeLow === rangeHigh && rangeLow > 0) {
+      rangeLow = Math.round(rangeLow * 0.95);
+      rangeHigh = Math.round(rangeHigh * 1.05);
+    }
+
     return {
       median: priceStats.median,
       average: priceStats.average,
       min: priceStats.min,
       max: priceStats.max,
       range: {
-        low: priceStats.q1,
-        high: priceStats.q3,
+        low: rangeLow,
+        high: rangeHigh,
       },
       pricePerMeter: {
         median: pricePerMeterStats.median,
