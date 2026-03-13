@@ -68,12 +68,15 @@ export class ExportService {
     for (const { id } of ids) {
       try {
         // Load full listing and map to CRM DTO (CRM requires geo_id, type_estate, etc.)
-        const listing = await this.hydrateListing(id);
-        if (!listing) {
+        const rows = await this.dataSource.query(
+          `SELECT * FROM unified_listings WHERE id = $1`, [id],
+        );
+        if (!rows.length) {
           this.logger.warn(`Deactivation: listing ${id} not found`);
           errors++;
           continue;
         }
+        const listing = this.hydrate(rows[0]);
 
         const dto = await this.toCrmMapper.map(listing);
         if (!dto) {
