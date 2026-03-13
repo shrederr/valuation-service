@@ -22,8 +22,8 @@ export const DOMRIA_CONDITION_MAP: Record<string, { text: string; score: number 
   '510': { text: 'Задовільний стан', score: 6 },
   '509': { text: 'Косметичний ремонт', score: 5 },
   '513': { text: 'Після будівельників', score: 3 },
-  '512': { text: 'Чорнова штукатурка', score: 2 },
-  '515': { text: 'Під чистову обробку', score: 2 },
+  '512': { text: 'Чорнова штукатурка', score: 4 },
+  '515': { text: 'Під чистову обробку', score: 4 },
   '511': { text: 'Потребує ремонту', score: 1 },
   '514': { text: 'Аварійний стан', score: 0 },
 };
@@ -40,7 +40,7 @@ export const REALTOR_CONDITION_SCORE: Record<string, number> = {
   'частковий ремонт': 5,
   'косметичний ремонт': 5,
   'після будівельників': 3,
-  'чорнова штукатурка': 2,
+  'чорнова штукатурка': 4,
   'без ремонту': 1,
   'потребує ремонту': 1,
   'потрібен капітальний ремонт': 0,
@@ -87,7 +87,7 @@ export const VECTOR_CONDITION_TYPE_MAP: Record<number, { text: string; score: nu
   20: { text: 'Житлове чисте', score: 7 },
   21: { text: 'Після косметики', score: 5 },
   22: { text: 'Ремонт не потрібний', score: 7 },
-  24: { text: 'White Box', score: 2 },
+  24: { text: 'White Box', score: 4 },
   // Legacy/extended codes (from older vector CRM data)
   69: { text: 'Хороший стан', score: 7 },
   81: { text: 'Євроремонт', score: 9 },
@@ -98,8 +98,8 @@ export const VECTOR_CONDITION_TYPE_MAP: Record<number, { text: string; score: nu
   169: { text: 'Після будівельників', score: 3 },
   173: { text: 'Житловий стан', score: 7 },
   458: { text: 'Євроремонт', score: 9 },
-  783: { text: 'Під чистову обробку', score: 2 },
-  800: { text: 'Під чистову обробку', score: 2 },
+  783: { text: 'Під чистову обробку', score: 4 },
+  800: { text: 'Під чистову обробку', score: 4 },
 };
 
 // ─── House Type / Тип будинку ────────────────────────────────────────
