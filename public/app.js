@@ -649,8 +649,13 @@ function displayFairPrice(fairPrice, askingPrice, analogs) {
   const rangeLow = fairPrice.range?.low || min;
   const rangeHigh = fairPrice.range?.high || max;
 
-  const rangeStart = ((rangeLow - min) / (max - min)) * 100;
-  const rangeWidth = ((rangeHigh - rangeLow) / (max - min)) * 100;
+  // Clamp range to [min, max] — spread from Q1===Q3 fix can exceed bounds
+  const clampedLow = Math.max(rangeLow, min);
+  const clampedHigh = Math.min(rangeHigh, max);
+  const span = max - min || 1;
+
+  const rangeStart = ((clampedLow - min) / span) * 100;
+  const rangeWidth = ((clampedHigh - clampedLow) / span) * 100;
 
   elements.meterRange.style.left = `${rangeStart}%`;
   elements.meterRange.style.width = `${rangeWidth}%`;
