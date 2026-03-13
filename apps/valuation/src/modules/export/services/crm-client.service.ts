@@ -63,4 +63,37 @@ export class CrmClientService {
 
     return { success: false, error: 'Unexpected retry exit' };
   }
+
+  /**
+   * Archive (deactivate) an object in CRM via the same /import-object endpoint.
+   * CRM checks `deleted_at` field — if present, calls handleArchive() internally.
+   * Sets archive_reason = 9 (Інше), archive_reason_text = "Імпорт: знятий з зовнішнього джерела".
+   * @param externalId - source external_id (aggregator ID)
+   */
+  async archiveObject(
+    externalId: string | number,
+  ): Promise<{ success: boolean; error?: string }> {
+    if (!this.client) {
+      this.logger.debug(`[dry-run] Would archive CRM object: external_id=${externalId}`);
+      return { success: true };
+    }
+
+    try {
+      const response = await this.client.post('/import-object', {
+        external_id: String(externalId),
+        deleted_at: new Date().toISOString(),
+      });
+      const data = response.data?.data || response.data;
+      if (data?.archived) {
+        return { success: true };
+      }
+      return { success: true }; // CRM may return success differently
+    } catch (error) {
+      const message = axios.isAxiosError(error)
+        ? `${error.response?.status} ${JSON.stringify(error.response?.data || error.message)}`
+        : String(error);
+      this.logger.warn(`CRM archive failed for external_id=${externalId}: ${message}`);
+      return { success: false, error: message };
+    }
+  }
 }

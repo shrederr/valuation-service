@@ -38,6 +38,58 @@ export class ExportService {
     await this.runExport();
   }
 
+  /**
+   * Cron: archive exported objects that are no longer active on source platforms.
+   * Runs every hour. Sends deleted_at to CRM via /import-object → handleArchive().
+   */
+  @Cron('0 15 * * * *')
+  async cronDeactivate() {
+    if (!this.enabled) return;
+    await this.deactivateDeletedObjects();
+  }
+
+  async deactivateDeletedObjects(): Promise<{ archived: number; errors: number }> {
+    const rows = await this.dataSource.query(`
+      SELECT id, source_id, crm_external_id
+      FROM unified_listings
+      WHERE export_status = 'exported'
+        AND crm_external_id IS NOT NULL
+        AND (deleted_at IS NOT NULL OR is_active = false)
+      LIMIT 200
+    `);
+
+    if (!rows.length) {
+      return { archived: 0, errors: 0 };
+    }
+
+    this.logger.log(`Deactivation: found ${rows.length} exported objects no longer active`);
+    let archived = 0;
+    let errors = 0;
+
+    for (const row of rows) {
+      try {
+        const result = await this.crmClientService.archiveObject(row.source_id);
+        if (result.success) {
+          await this.dataSource.query(
+            `UPDATE unified_listings SET export_status = 'deactivated' WHERE id = $1`,
+            [row.id],
+          );
+          archived++;
+          this.logger.debug(`Deactivated: sourceId=${row.source_id}, crmId=${row.crm_external_id}`);
+        } else {
+          this.logger.warn(`Deactivation failed: sourceId=${row.source_id}: ${result.error}`);
+          errors++;
+        }
+      } catch (err) {
+        this.logger.error(`Deactivation error: sourceId=${row.source_id}: ${err}`);
+        errors++;
+      }
+    }
+
+    this.logger.log(`Deactivation complete: ${archived} archived, ${errors} errors`);
+    return { archived, errors };
+  }
+
   async runExport(opts?: { batchSize?: number; geoId?: number; realtyType?: string }): Promise<{
     exported: number; duplicates: number; errors: number; skipped: number;
     crmIds: { sourceId: number; crmId: string }[];

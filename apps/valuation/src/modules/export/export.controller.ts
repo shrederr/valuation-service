@@ -61,4 +61,10 @@ export class ExportController {
   async translateBatch(@Query('batchSize') batchSize?: string) {
     return this.exportService.translateBatch(batchSize ? Number(batchSize) : 100);
   }
+
+  @Post('deactivate')
+  @ApiOperation({ summary: 'Archive exported objects that are no longer active on source platforms' })
+  async deactivate() {
+    return this.exportService.deactivateDeletedObjects();
+  }
 }
