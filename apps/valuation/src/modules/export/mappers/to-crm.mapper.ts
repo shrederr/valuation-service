@@ -4,7 +4,7 @@ import { UnifiedListing } from '@libs/database';
 import { Vector2ExportDto, Vector2ExportAttributes } from '../dto';
 import { PrimaryDataExtractor } from '../services/primary-data-extractor';
 
-const DOMRIA_CDN = 'https://cdn.riastatic.com/photos/';
+const DOMRIA_CDN = 'https://cdn.riastatic.com/photosnew/dom/photo/';
 
 /** Reverse mapping: condition string → CRM condition_type ID */
 const REVERSE_CONDITION_MAP: Record<string, number> = {
@@ -538,16 +538,35 @@ export class ToCrmMapper {
   }
 
   private buildPhotos(listing: UnifiedListing, extractedPhotos: string[] | null): string[] | null {
-    // domRia: photos is an object {id: {file: "dom/photo/..."}} — need to build full URLs
+    // domRia: photos is an object {photoId: {file: "dom/photo/...", ordering: N}}
+    // CDN format: https://cdn.riastatic.com/photosnew/dom/photo/{slug}__{photoId}f.jpg
+    // slug comes from beautiful_url: "realty-prodaja-kvartira-...-{id}.html" → "prodaja-kvartira-..."
     if (listing.realtyPlatform === 'domRia') {
       const pd = (listing as any).primaryData || {};
       const photosObj = pd.photos;
       if (photosObj && typeof photosObj === 'object' && !Array.isArray(photosObj)) {
-        const entries = Object.values(photosObj) as Array<{ file?: string; ordering?: number }>;
-        return entries
+        // Extract slug from beautiful_url
+        const beautifulUrl = pd.beautiful_url as string | undefined;
+        let slug = '';
+        if (beautifulUrl) {
+          // "realty-prodaja-kvartira-vinnitsa-...-33753247.html" → "prodaja-kvartira-vinnitsa-..."
+          slug = beautifulUrl
+            .replace(/^realty-/, '')
+            .replace(/-\d+\.html$/, '');
+        }
+
+        const photoIds = Object.keys(photosObj);
+        const entries = photoIds
+          .map(id => ({ id, ...(photosObj[id] as { file?: string; ordering?: number }) }))
           .filter(e => e.file && !e.file.includes('..'))
-          .sort((a, b) => (a.ordering || 0) - (b.ordering || 0))
-          .map(e => DOMRIA_CDN + e.file);
+          .sort((a, b) => (a.ordering || 0) - (b.ordering || 0));
+
+        if (slug) {
+          // Slug-based CDN URL (reliable)
+          return entries.map(e => `${DOMRIA_CDN}${slug}__${e.id}f.jpg`);
+        }
+        // Fallback: old path-based URL (may 415)
+        return entries.map(e => `https://cdn.riastatic.com/photos/${e.file}`);
       }
     }
 
