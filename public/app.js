@@ -94,11 +94,11 @@ const translations = {
   },
   criteriaTooltips: {
     price: {
-      formula: 'Min-max нормалізація серед аналогів:\nS = 10 × (xmax - x) / (xmax - xmin)\n\n"Менше краще" — дешевший = вищий бал\nДіапазон: 0–10\n\nFallback (без аналогів):\n  ratio ≤ 0.85 → 10\n  ratio ≤ 0.95 → 8\n  ratio ≤ 1.05 → 6\n  ratio ≤ 1.15 → 4\n  ratio ≤ 1.30 → 2\n  ratio > 1.30 → 0',
+      formula: 'Min-max нормалізація серед аналогів:\nS = 10 × (xmax - x) / (xmax - xmin)\n\nДешевший = вищий бал\nДіапазон: 0–10\n\nFallback (без аналогів):\n  ratio ≤ 0.85 → 10\n  ratio ≤ 0.95 → 8\n  ratio ≤ 1.05 → 6\n  ratio ≤ 1.15 → 4\n  ratio ≤ 1.30 → 2\n  ratio > 1.30 → 0',
       example: 'Об\'єкт: $50,000, аналоги: $45,000–$80,000\nS = 10 × (80000 - 50000) / (80000 - 45000)\nS = 10 × 0.857 = 8.6',
     },
     livingArea: {
-      formula: 'S = 10 × (x - xmin) / (xmax - xmin)\n\n"Більше краще" — більша площа = вищий бал\nЯкщо xmin == xmax → S = 10\nДіапазон: 0–10\n\nOLX/MLS: totalArea (living_area відсутня)\nРешта: livingArea, fallback totalArea',
+      formula: 'S = 10 × (x - xmin) / (xmax - xmin)\n\nБільша площа = вищий бал\nЯкщо xmin == xmax → S = 10\nДіапазон: 0–10\n\nOLX/MLS: totalArea (living_area відсутня)\nРешта: livingArea, fallback totalArea',
       example: 'Об\'єкт: 65 м², аналоги: 40–90 м²\nS = 10 × (65-40)/(90-40) = 5.0',
     },
     exposureTime: {
