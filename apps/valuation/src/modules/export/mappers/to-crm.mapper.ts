@@ -366,14 +366,8 @@ export class ToCrmMapper {
         if (!isNaN(num) && num >= 1 && num <= 40) return num;
       }
     }
-    // Reverse map from houseType string
-    // For DomRia: houseType was incorrectly set from wall_type (material, not project),
-    // so skip it and use realty_type_name for houses instead
-    if (listing.houseType && listing.realtyPlatform !== 'domRia') {
-      const mapped = REVERSE_PROJECT_MAP[listing.houseType];
-      if (mapped) return mapped;
-    }
-    // Fallback: extract from primaryData
+    // Extract from primaryData FIRST (more precise than entity houseType which may come from
+    // incorrectly mapped border/wall_type values)
     const pd = (listing as any).primaryData;
     if (pd) {
       // OLX: apartments_object_type = "Новобудова" → project 7
@@ -382,7 +376,7 @@ export class ToCrmMapper {
         if (objType?.normalizedValue === 'primary_market' || objType?.value === 'Новобудова') {
           return 7; // Новобуд
         }
-        // OLX: house_type → wall material as project hint
+        // OLX: property_type_appartments_sale
         const houseType = pd.params.find((p: any) => p?.key === 'property_type_appartments_sale');
         if (houseType?.value) {
           const mapped = REVERSE_PROJECT_MAP[houseType.value];
@@ -399,11 +393,17 @@ export class ToCrmMapper {
           if (mapped) return mapped;
         }
       }
-      // realtorUa: main_params.border — some values ARE house types (Сталінка, Дореволюційний)
+      // realtorUa: main_params.border — only actual house types (not materials)
       if (pd.main_params?.border) {
         const mapped = REVERSE_PROJECT_MAP[pd.main_params.border];
         if (mapped) return mapped;
       }
+    }
+    // Fallback: reverse map from entity houseType string
+    // Skip DomRia (was incorrectly set from wall_type) and RealtorUA (may be stale material-based value)
+    if (listing.houseType && listing.realtyPlatform !== 'domRia' && listing.realtyPlatform !== 'realtorUa') {
+      const mapped = REVERSE_PROJECT_MAP[listing.houseType];
+      if (mapped) return mapped;
     }
     return undefined;
   }
