@@ -171,6 +171,19 @@ const REVERSE_HOUSING_MATERIAL_MAP: Record<string, number> = {
   'цегла, керамоблок': 2,    // Цегла (primary)
 };
 
+/** RealtorUA description.details condition → CRM condition_type ID.
+ *  Values come from "Загальний стан квартири/будинку - ..." in description.details.
+ *  Chain: details value → REALTOR_UA_STATUS_MAP → REVERSE_CONDITION_MAP → CRM ID */
+const REALTOR_DETAILS_CONDITION_MAP: Record<string, number> = {
+  'З ремонтом': 20,           // → Хороший стан → Житлове чисте (20)
+  'Без ремонту': 3,           // → Потрібен косметичний ремонт (3)
+  'Частковий ремонт': 20,     // → Хороший стан → Житлове чисте (20)
+  'Хороший стан': 20,         // → Житлове чисте (20)
+  'Євроремонт': 5,            // → Євроремонт (5)
+  'Дизайнерський ремонт': 5,  // → Євроремонт (5)
+  'Після ремонту': 4,         // → Після капремонту (4)
+};
+
 /** object_type defaults per realty type for CRM import */
 const OBJECT_TYPE_MAP: Record<string, number> = {
   apartment: 1,    // вторинка (default)
@@ -359,6 +372,21 @@ export class ToCrmMapper {
     if (listing.condition) {
       const mapped = REVERSE_CONDITION_MAP[listing.condition];
       if (mapped) return mapped;
+    }
+    // Fallback for realtorUa: extract from description.details
+    // Pattern: "Загальний стан квартири/будинку - З ремонтом"
+    // ~34K objects have condition here but not in main_params.status
+    if (listing.realtyPlatform === 'realtorUa') {
+      const pd = (listing as any).primaryData;
+      const details = pd?.description?.details;
+      if (typeof details === 'string') {
+        const match = details.match(/Загальний стан (?:квартири|будинку|приміщення)\s*[-–—]\s*([^.]+)/);
+        if (match?.[1]) {
+          const statusFromDetails = match[1].trim();
+          const mapped = REALTOR_DETAILS_CONDITION_MAP[statusFromDetails];
+          if (mapped) return mapped;
+        }
+      }
     }
     return undefined;
   }
