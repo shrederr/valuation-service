@@ -49,39 +49,60 @@ export class ExportService {
   }
 
   async deactivateDeletedObjects(): Promise<{ archived: number; errors: number }> {
-    const rows = await this.dataSource.query(`
-      SELECT id, source_id, crm_external_id
-      FROM unified_listings
+    const ids = await this.dataSource.query(`
+      SELECT id FROM unified_listings
       WHERE export_status = 'exported'
         AND crm_external_id IS NOT NULL
         AND (deleted_at IS NOT NULL OR is_active = false)
       LIMIT 200
     `);
 
-    if (!rows.length) {
+    if (!ids.length) {
       return { archived: 0, errors: 0 };
     }
 
-    this.logger.log(`Deactivation: found ${rows.length} exported objects no longer active`);
+    this.logger.log(`Deactivation: found ${ids.length} exported objects no longer active`);
     let archived = 0;
     let errors = 0;
 
-    for (const row of rows) {
+    for (const { id } of ids) {
       try {
-        const result = await this.crmClientService.archiveObject(row.source_id);
+        // Load full listing and map to CRM DTO (CRM requires geo_id, type_estate, etc.)
+        const listing = await this.hydrateListing(id);
+        if (!listing) {
+          this.logger.warn(`Deactivation: listing ${id} not found`);
+          errors++;
+          continue;
+        }
+
+        const dto = await this.toCrmMapper.map(listing);
+        if (!dto) {
+          // Can't map → just mark as deactivated locally
+          await this.dataSource.query(
+            `UPDATE unified_listings SET export_status = 'deactivated' WHERE id = $1`,
+            [id],
+          );
+          archived++;
+          continue;
+        }
+
+        // Add deleted_at → CRM will call handleArchive()
+        (dto as any).deleted_at = new Date().toISOString();
+
+        const result = await this.crmClientService.importObject(dto);
         if (result.success) {
           await this.dataSource.query(
             `UPDATE unified_listings SET export_status = 'deactivated' WHERE id = $1`,
-            [row.id],
+            [id],
           );
           archived++;
-          this.logger.debug(`Deactivated: sourceId=${row.source_id}, crmId=${row.crm_external_id}`);
+          this.logger.debug(`Deactivated: sourceId=${listing.sourceId}, crmId=${listing.crmExternalId}`);
         } else {
-          this.logger.warn(`Deactivation failed: sourceId=${row.source_id}: ${result.error}`);
+          this.logger.warn(`Deactivation failed: sourceId=${listing.sourceId}: ${result.error}`);
           errors++;
         }
       } catch (err) {
-        this.logger.error(`Deactivation error: sourceId=${row.source_id}: ${err}`);
+        this.logger.error(`Deactivation error: id=${id}: ${err}`);
         errors++;
       }
     }
