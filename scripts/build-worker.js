@@ -23,10 +23,12 @@ try {
     { stdio: 'pipe' },
   );
 
-  // Find the compiled file (tsc preserves directory structure)
-  const compiled = path.join(tmpDir, 'apps', 'valuation', 'src', 'modules', 'export', 'services', 'embedding.worker.js');
-  if (fs.existsSync(compiled)) {
-    fs.copyFileSync(compiled, path.join(outDir, 'embedding.worker.js'));
+  // Find the compiled file (tsc may or may not preserve directory structure)
+  const compiled = path.join(tmpDir, 'embedding.worker.js');
+  const compiledNested = path.join(tmpDir, 'apps', 'valuation', 'src', 'modules', 'export', 'services', 'embedding.worker.js');
+  const found = [compiled, compiledNested].find(p => fs.existsSync(p));
+  if (found) {
+    fs.copyFileSync(found, path.join(outDir, 'embedding.worker.js'));
     console.log('✓ embedding.worker.js compiled and copied to dist');
   } else {
     console.warn('Warning: compiled worker not found at expected path');
