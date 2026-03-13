@@ -51,12 +51,12 @@ export class FormatCriterion extends BaseCriterion {
         explanation = '1-кімнатна — найвища ліквідність';
         break;
       case 2:
-        score = 8;
-        explanation = '2-кімнатна — висока ліквідність';
+        score = 10;
+        explanation = '2-кімнатна — найвища ліквідність';
         break;
       case 3:
-        score = 6;
-        explanation = '3-кімнатна — середня ліквідність';
+        score = 8;
+        explanation = '3-кімнатна — висока ліквідність';
         break;
       case 4:
         score = 4;

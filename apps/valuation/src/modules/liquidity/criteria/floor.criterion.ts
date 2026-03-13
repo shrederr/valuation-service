@@ -1,11 +1,16 @@
 import { Injectable } from '@nestjs/common';
 
+import { PrimaryDataExtractor } from '../services/primary-data-extractor';
 import { BaseCriterion, CriterionResult, CriterionContext, LIQUIDITY_WEIGHTS } from './base.criterion';
 
 @Injectable()
 export class FloorCriterion extends BaseCriterion {
   public readonly name = 'floor';
   public readonly weight = LIQUIDITY_WEIGHTS.floor;
+
+  constructor(private readonly primaryDataExtractor: PrimaryDataExtractor) {
+    super();
+  }
 
   public evaluate(context: CriterionContext): CriterionResult {
     const { subject } = context;
@@ -28,6 +33,15 @@ export class FloorCriterion extends BaseCriterion {
         return this.createResult(10, '1 поверх комерції — найвища ліквідність');
       }
       // Решта — стандартна оцінка
+    }
+
+    // Пентхаус / тераса на останньому поверсі — преміум
+    if (totalFloors && floor === totalFloors) {
+      const layoutData = this.primaryDataExtractor.extractLayout(subject);
+      const layoutText = layoutData?.text?.toLowerCase() || '';
+      if (layoutText.includes('пентхаус') || layoutText.includes('penthouse') || layoutText.includes('терас')) {
+        return this.createResult(10, `Пентхаус / тераса на останньому поверсі — преміум`);
+      }
     }
 
     let score: number;
