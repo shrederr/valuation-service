@@ -38,7 +38,7 @@ export class ExposureTimeCriterion extends BaseCriterion {
 
   /**
    * Оценка на основе реальных данных экспозиции из БД.
-   * По ТЗ: S = 10 * (xmax - x) / (xmax - xmin) — "менше краще", 0-10
+   * По ТЗ: S = 10 * (xmax - x) / (xmax - xmin) — швидший продаж = вищий бал, 0-10
    */
   private evaluateWithRealData(
     subject: UnifiedListing,

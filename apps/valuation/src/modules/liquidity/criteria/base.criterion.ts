@@ -59,7 +59,7 @@ export abstract class BaseCriterion {
 // Видалено: location (0.07), windows (0.05) — немає даних.
 // Звільнені 0.12 перерозподілено. Ваги нормалізуються автоматично: L = Σ(Si*Wi) / Σ(Wi)
 export const LIQUIDITY_WEIGHTS = {
-  price: 0.23,            // Ціна (менше = краще, min-max)
+  price: 0.23,            // Ціна (дешевший = вищий бал, min-max)
   condition: 0.10,        // Стан / ремонт
   exposureTime: 0.09,     // Час експозиції
   furniture: 0.08,        // Меблі та техніка
@@ -71,7 +71,7 @@ export const LIQUIDITY_WEIGHTS = {
   houseType: 0.05,        // Тип будинку
   competition: 0.05,      // Конкуренція / попит-пропозиція
   buyConditions: 0.04,    // Умови купівлі
-  livingArea: 0.03,       // Жила площа (більше = краще, min-max)
+  livingArea: 0.03,       // Жила площа (більша площа = вищий бал, min-max)
 };
 
 // Медианное время продажи по типам (из реальных данных)

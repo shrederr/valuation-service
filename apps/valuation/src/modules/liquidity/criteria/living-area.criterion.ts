@@ -5,7 +5,7 @@ import { BaseCriterion, CriterionResult, CriterionContext, LIQUIDITY_WEIGHTS } f
 
 /**
  * Критерій "Площа" — min-max нормалізація площі серед аналогів.
- * По ТЗ: S = 10 * (x - xmin) / (xmax - xmin), "більша краще = вища ціна", 0-10.
+ * По ТЗ: S = 10 * (x - xmin) / (xmax - xmin), більша площа = вищий бал, 0-10.
  * Якщо xmin == xmax → S = 10.
  *
  * Для всіх платформ використовуємо totalArea (загальна площа).

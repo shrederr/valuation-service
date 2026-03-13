@@ -649,22 +649,33 @@ function displayFairPrice(fairPrice, askingPrice, analogs) {
   const rangeLow = fairPrice.range?.low || min;
   const rangeHigh = fairPrice.range?.high || max;
 
-  const rangeStart = ((rangeLow - min) / (max - min)) * 100;
-  const rangeWidth = ((rangeHigh - rangeLow) / (max - min)) * 100;
+  // Extend visual range to include asking price so bar is proportional
+  let visualMin = min;
+  let visualMax = max;
+  if (askingPrice && askingPrice > 0) {
+    const padding = (max - min) * 0.05 || 1000; // 5% padding
+    if (askingPrice < visualMin) visualMin = askingPrice - padding;
+    if (askingPrice > visualMax) visualMax = askingPrice + padding;
+  }
+  // Safety: ensure range is non-zero
+  if (visualMax <= visualMin) visualMax = visualMin + 1000;
+
+  const rangeStart = ((rangeLow - visualMin) / (visualMax - visualMin)) * 100;
+  const rangeWidth = ((rangeHigh - rangeLow) / (visualMax - visualMin)) * 100;
 
   elements.meterRange.style.left = `${rangeStart}%`;
   elements.meterRange.style.width = `${rangeWidth}%`;
 
   if (askingPrice) {
-    const markerPos = Math.min(100, Math.max(0, ((askingPrice - min) / (max - min)) * 100));
+    const markerPos = Math.min(100, Math.max(0, ((askingPrice - visualMin) / (visualMax - visualMin)) * 100));
     elements.meterMarker.style.left = `${markerPos}%`;
     elements.meterMarker.style.display = 'block';
   } else {
     elements.meterMarker.style.display = 'none';
   }
 
-  elements.meterMin.textContent = formatPrice(min);
-  elements.meterMax.textContent = formatPrice(max);
+  elements.meterMin.textContent = formatPrice(visualMin);
+  elements.meterMax.textContent = formatPrice(visualMax);
 
   // Verdict
   const verdict = fairPrice.verdict || 'in_market';
@@ -777,7 +788,7 @@ function displayAnalogs(analogs) {
   elements.searchRadius.textContent = translations.searchRadius[analogs.searchRadius] || analogs.searchRadius || '-';
 
   if (!analogs.analogs || !analogs.analogs.length) {
-    elements.analogsTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 2rem;">Аналоги не знайдені</td></tr>';
+    elements.analogsTableBody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 2rem;">Аналоги не знайдені</td></tr>';
     return;
   }
 
@@ -794,6 +805,7 @@ function displayAnalogs(analogs) {
         <td>${a.floor ? a.floor + (a.totalFloors ? '/' + a.totalFloors : '') : '-'}</td>
         <td><span class="match-badge ${matchLevel}">${Math.round((a.matchScore || 0) * 100)}%</span></td>
         <td>${a.externalUrl ? `<a href="${a.externalUrl}" target="_blank" class="link-btn">Відкрити</a>` : ''}</td>
+        <td><a href="?id=${a.id}" target="_blank" class="link-btn valuation-link">Оцінка</a></td>
       </tr>
     `;
   }).join('');

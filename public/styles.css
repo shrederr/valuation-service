@@ -1015,6 +1015,15 @@ header h1 {
   background: var(--gray-200);
 }
 
+.analogs-table .valuation-link {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.analogs-table .valuation-link:hover {
+  background: #dbeafe;
+}
+
 /* Report Card */
 .report-card {
   background: var(--gray-50);
