@@ -16,6 +16,7 @@ import { AggregatorPropertyMapper } from '../mappers/aggregator-property.mapper'
 import { Vector2PropertyMapper } from '../mappers/vector2-property.mapper';
 import { InfrastructureService } from '../../infrastructure/infrastructure.service';
 import { SourceIdMappingService } from './source-id-mapping.service';
+import { GeoLookupService } from '../../osm/geo-lookup.service';
 
 @Injectable()
 export class PropertySyncService {
@@ -29,6 +30,7 @@ export class PropertySyncService {
     private readonly vector2Mapper: Vector2PropertyMapper,
     private readonly infrastructureService: InfrastructureService,
     private readonly sourceIdMappingService: SourceIdMappingService,
+    private readonly geoLookupService: GeoLookupService,
   ) {}
 
   // === Vector Property Operations ===
@@ -245,6 +247,20 @@ export class PropertySyncService {
     try {
       const idMappings = this.sourceIdMappingService.getMappings();
       const mapped = this.vector2Mapper.mapToUnifiedListing(row, idMappings);
+
+      // Geo fallback: if geoId not resolved via mapping, try coordinates
+      if (!mapped.geoId && mapped.lat && mapped.lng) {
+        try {
+          const geo = await this.geoLookupService.findGeoByCoordinates(mapped.lng, mapped.lat);
+          if (geo) {
+            mapped.geoId = geo.id;
+            this.logger.log(`Vector2 ${row.id}: geo resolved from coordinates → geoId=${geo.id} (${geo.name})`);
+          }
+        } catch (err) {
+          this.logger.warn(`Vector2 ${row.id}: geo lookup by coordinates failed: ${err instanceof Error ? err.message : err}`);
+        }
+      }
+
       const existing = await this.listingRepository.findOne({
         where: {
           sourceType: SourceType.VECTOR_CRM,

@@ -176,23 +176,16 @@ export class WebhookController {
       throw new BadRequestException(`Unknown event type: ${payload.event}`);
     }
 
-    // Step 1: Check if exists, upsert only if new
+    // Step 1: Upsert — always call handleVector2PropertyUpsert for both created and updated events
+    // This ensures price changes and attribute updates are applied
     let listingId: string;
-    const existing = await this.listingRepository.findOne({
-      where: { sourceType: SourceType.VECTOR_CRM, sourceId: payload.data.id },
-    });
-
-    if (existing) {
-      listingId = existing.id;
-      this.logger.log(`Vector2 property ${payload.data.id} already exists (${listingId}), skipping upsert`);
-    } else {
-      try {
-        listingId = await this.propertySyncService.handleVector2PropertyUpsert(payload.data);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        this.logger.error(`Vector2 upsert failed for ${payload.data.id}: ${message}`);
-        return { success: true, event: payload.event, sourceId: payload.data.id, listingId: null, syncedAt: new Date(), liquidityScore: 0 };
-      }
+    try {
+      listingId = await this.propertySyncService.handleVector2PropertyUpsert(payload.data);
+      this.logger.log(`Vector2 property ${payload.data.id} upserted successfully (${listingId})`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Vector2 upsert failed for ${payload.data.id}: ${message}`);
+      return { success: true, event: payload.event, sourceId: payload.data.id, listingId: null, syncedAt: new Date(), liquidityScore: 0 };
     }
 
     // Step 2: Liquidity score

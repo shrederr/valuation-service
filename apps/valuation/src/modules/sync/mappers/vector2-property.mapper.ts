@@ -94,8 +94,8 @@ export class Vector2PropertyMapper {
       sourceGlobalId: row.global_id || undefined,
       dealType,
       realtyType,
-      geoId: (idMappings ? idMappings.geo.get(row.fk_geo_id) : row.fk_geo_id) || undefined,
-      streetId: (row.geo_street && idMappings ? idMappings.street.get(row.geo_street) : row.geo_street) || undefined,
+      geoId: idMappings?.geo.get(row.fk_geo_id) ?? undefined,
+      streetId: (row.geo_street && idMappings?.street.get(row.geo_street)) ?? undefined,
       topzoneId: undefined, // topzones table is empty, skip to avoid FK violation
       complexId: this.resolveComplexId(attrs.geo_zk, idMappings) || undefined,
       lat: lat ?? undefined,
@@ -353,8 +353,8 @@ export class Vector2PropertyMapper {
   private resolveComplexId(geoZk: unknown, idMappings?: Vector2IdMappings): number | undefined {
     const id = this.extractInteger(geoZk);
     if (!id) return undefined;
-    if (idMappings) return idMappings.complex.get(id);
-    return id;
+    // Only use mapped ID, never raw CRM ID (would violate FK constraint)
+    return idMappings?.complex.get(id);
   }
 
   // =========================================================
