@@ -15,6 +15,13 @@ const PRICE_DELTA = 0.05;
 const DEDUP_SOURCE_FILTER = `(source_type IN ('vector', 'vector_crm') OR (source_type = 'aggregator' AND export_status = 'exported'))`;
 
 /**
+ * Activity filter: CRM objects are checked even if inactive/archived (an archived CRM listing
+ * still represents the same physical property — re-exporting would create duplicates).
+ * Aggregator objects must be active to be dedup targets.
+ */
+const DEDUP_ACTIVE_FILTER = `(is_active = true OR source_type IN ('vector', 'vector_crm'))`;
+
+/**
  * Exact attribute keys that must match per realty type (from api_realty_comparison).
  * These are the DB columns we check for exact equality.
  */
@@ -73,7 +80,7 @@ export class DedupCheckService {
     const result = await this.dataSource.query(
       `SELECT id FROM unified_listings
        WHERE ${DEDUP_SOURCE_FILTER}
-         AND is_active = true
+         AND ${DEDUP_ACTIVE_FILTER}
          AND id != $1
          AND street_id = $2
          AND house_number = $3
@@ -102,7 +109,7 @@ export class DedupCheckService {
     const result = await this.dataSource.query(
       `SELECT id FROM unified_listings
        WHERE ${DEDUP_SOURCE_FILTER}
-         AND is_active = true
+         AND ${DEDUP_ACTIVE_FILTER}
          AND id != $1
          AND normalized_phone = $2
          AND realty_type = $3
@@ -133,7 +140,7 @@ export class DedupCheckService {
     const result = await this.dataSource.query(
       `SELECT id FROM unified_listings
        WHERE ${DEDUP_SOURCE_FILTER}
-         AND is_active = true
+         AND ${DEDUP_ACTIVE_FILTER}
          AND id != $1
          AND realty_type = $2
          AND lat IS NOT NULL AND lng IS NOT NULL
@@ -188,7 +195,7 @@ export class DedupCheckService {
         `SELECT id, 1 - (embedding <=> $1::vector) AS similarity
          FROM unified_listings
          WHERE ${DEDUP_SOURCE_FILTER}
-           AND is_active = true
+           AND ${DEDUP_ACTIVE_FILTER}
            AND id != $2
            AND realty_type = $3
            AND geo_id = $4
