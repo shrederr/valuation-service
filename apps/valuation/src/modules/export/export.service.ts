@@ -16,6 +16,8 @@ export class ExportService {
   private readonly batchSize: number;
   private readonly enabled: boolean;
   private running = false;
+  private runStartedAt: Date | null = null;
+  private readonly LOCK_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
   private lastRunAt: Date | null = null;
   private lastRunStats: { exported: number; duplicates: number; errors: number; skipped: number } | null = null;
 
@@ -118,12 +120,11 @@ export class ExportService {
     exported: number; duplicates: number; errors: number; skipped: number;
     crmIds: { sourceId: number; crmId: string }[];
   }> {
-    if (this.running) {
+    if (!this.acquireLock()) {
       this.logger.warn('Export already running, skipping');
       return { exported: 0, duplicates: 0, errors: 0, skipped: 0, crmIds: [] };
     }
 
-    this.running = true;
     const stats = { exported: 0, duplicates: 0, errors: 0, skipped: 0, crmIds: [] as { sourceId: number; crmId: string }[] };
     const batch = opts?.batchSize || this.batchSize;
     const filters = { geoId: opts?.geoId, realtyType: opts?.realtyType };
@@ -143,7 +144,7 @@ export class ExportService {
         `Export run done: exported=${stats.exported}, duplicates=${stats.duplicates}, errors=${stats.errors}, skipped=${stats.skipped}`,
       );
     } finally {
-      this.running = false;
+      this.releaseLock();
       this.lastRunAt = new Date();
       this.lastRunStats = { exported: stats.exported, duplicates: stats.duplicates, errors: stats.errors, skipped: stats.skipped };
     }
@@ -175,7 +176,7 @@ export class ExportService {
       paramIdx++;
     }
 
-    conditions.push(`price > 0 AND total_area > 0`);
+    conditions.push(`price > 0 AND total_area > 0 AND geo_id IS NOT NULL`);
 
     params.push(limit);
     const limitParam = `$${paramIdx}`;
@@ -333,11 +334,10 @@ export class ExportService {
     total: { exported: number; duplicates: number; errors: number; skipped: number };
     byPlatform: Record<string, { exported: number; duplicates: number; errors: number; skipped: number; crmIds: { sourceId: number; crmId: string }[] }>;
   }> {
-    if (this.running) {
+    if (!this.acquireLock()) {
       throw new Error('Export already running');
     }
 
-    this.running = true;
     const total = { exported: 0, duplicates: 0, errors: 0, skipped: 0 };
     const byPlatform: Record<string, { exported: number; duplicates: number; errors: number; skipped: number; crmIds: { sourceId: number; crmId: string }[] }> = {};
 
@@ -355,6 +355,7 @@ export class ExportService {
           `deleted_at IS NULL`,
           `price > 0`,
           `total_area > 0`,
+          `geo_id IS NOT NULL`,
           `realty_platform = $1`,
         ];
         const params: unknown[] = [platform];
@@ -433,8 +434,7 @@ export class ExportService {
         this.logger.log(`Platform ${platform} done: exported=${platformStats.exported}, duplicates=${platformStats.duplicates}, errors=${platformStats.errors}`);
       }
     } finally {
-      this.running = false;
-      this.lastRunAt = new Date();
+      this.releaseLock();
       this.lastRunStats = total;
     }
 
@@ -486,7 +486,31 @@ export class ExportService {
       crmConfigured: this.crmClientService.isConfigured(),
       lastRunAt: this.lastRunAt,
       lastRunStats: this.lastRunStats,
+      runStartedAt: this.runStartedAt,
     };
+  }
+
+  /** Acquire the export lock. Returns true if lock acquired, false if already running. Auto-releases stale locks after LOCK_TIMEOUT_MS. */
+  private acquireLock(): boolean {
+    if (this.running && this.runStartedAt) {
+      const elapsed = Date.now() - this.runStartedAt.getTime();
+      if (elapsed > this.LOCK_TIMEOUT_MS) {
+        this.logger.warn(`Export lock timed out after ${Math.round(elapsed / 60000)}min — force releasing`);
+        this.running = false;
+        this.runStartedAt = null;
+      }
+    }
+    if (this.running) return false;
+    this.running = true;
+    this.runStartedAt = new Date();
+    return true;
+  }
+
+  /** Release the export lock. */
+  private releaseLock(): void {
+    this.running = false;
+    this.runStartedAt = null;
+    this.lastRunAt = new Date();
   }
 
   private async updateExportStatus(id: string, status: string, crmExternalId: string | null, error?: string) {
