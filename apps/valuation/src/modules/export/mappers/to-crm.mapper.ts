@@ -161,6 +161,15 @@ const REVERSE_HOUSING_MATERIAL_MAP: Record<string, number> = {
   'блочно-кирпичный': 8,
   'керамзитобетон': 8,
   'ракушечник (ракушняк)': 2,
+  // RealEstateLvivUa details["Матеріал стін"] values (Ukrainian)
+  'керамічний блок': 30,     // Керамічний блок
+  'залізобетон': 14,         // Залізобетон
+  'пінобетон (піноблок)': 27, // Пінобетон
+  'дерево': 6,               // Дерево
+  'газобетон (газоблок)': 28, // Газобетон
+  'керамзитобетон': 9,       // Керамзит-бетон
+  'керамзитобетон, цегла': 9, // Керамзит-бетон (primary)
+  'цегла, керамоблок': 2,    // Цегла (primary)
 };
 
 /** object_type defaults per realty type for CRM import */
@@ -408,13 +417,20 @@ export class ToCrmMapper {
     return undefined;
   }
 
-  /** Resolve housing_material: attrs passthrough or extract from primaryData */
+  // Valid CRM housing_material key values (from ob_attribute_items)
+  private static readonly VALID_CRM_HOUSING_MATERIAL_KEYS = new Set([
+    1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 14, 21, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33,
+  ]);
+
+  /** Resolve housing_material: attrs passthrough (only valid CRM keys) or extract from primaryData */
   private resolveHousingMaterial(listing: UnifiedListing, attrs: Record<string, unknown>): number | undefined {
-    // If attrs has a CRM-range housing_material ID, use directly
+    // If attrs has a valid CRM housing_material key, use directly
+    // NOTE: only vector_crm listings have correct CRM keys; aggregator platforms
+    // (realEstateLvivUa, etc.) store their own IDs which may not be valid CRM keys
     const raw = attrs.housing_material;
     if (raw !== undefined && raw !== null) {
       const num = Number(raw);
-      if (!isNaN(num) && num >= 1 && num <= 40) return num;
+      if (!isNaN(num) && ToCrmMapper.VALID_CRM_HOUSING_MATERIAL_KEYS.has(num)) return num;
     }
     // Extract from primaryData
     const pd = (listing as any).primaryData;
@@ -441,6 +457,14 @@ export class ToCrmMapper {
         if (techMatch?.[1]) {
           const materialName = techMatch[1].trim();
           const mapped = REVERSE_HOUSING_MATERIAL_MAP[materialName];
+          if (mapped) return mapped;
+        }
+      }
+      // realEstateLvivUa: details object has "Матеріал стін" key
+      if (pd.details && typeof pd.details === 'object' && !Array.isArray(pd.details)) {
+        const materialStr = pd.details['Матеріал стін'];
+        if (typeof materialStr === 'string') {
+          const mapped = REVERSE_HOUSING_MATERIAL_MAP[materialStr.toLowerCase()];
           if (mapped) return mapped;
         }
       }
