@@ -242,11 +242,22 @@ export class AttributeMapperService {
 
   private mapRealtorUaCondition(primaryData: Record<string, unknown>): string | undefined {
     const mainParams = primaryData.main_params as Record<string, unknown> | undefined;
-    if (!mainParams) return undefined;
 
-    const status = mainParams.status as string | undefined;
+    // 1) main_params.status (primary source)
+    const status = mainParams?.status as string | undefined;
     if (status) {
       return REALTOR_UA_STATUS_MAP[status];
+    }
+
+    // 2) Fallback: description.details "Загальний стан квартири/будинку - ..."
+    const desc = primaryData.description as Record<string, unknown> | undefined;
+    const details = desc?.details as string | undefined;
+    if (details) {
+      const match = details.match(/Загальний стан (?:квартири|будинку|приміщення)\s*[-–—]\s*([^.]+)/);
+      if (match?.[1]) {
+        const statusFromDetails = match[1].trim();
+        return REALTOR_UA_STATUS_MAP[statusFromDetails];
+      }
     }
 
     return undefined;
