@@ -226,7 +226,7 @@ export class AggregatorPropertyMapper {
       description: data.description ? { uk: data.description.uk || '' } : undefined,
       isActive: data.isActive ?? true,
       isExclusive: false,
-      externalUrl: data.external_url || data.url || undefined,
+      externalUrl: data.external_url || data.url || this.extractUrlFromPrimaryData(data.primaryData) || undefined,
       publishedAt: data.createdAt ? new Date(data.createdAt) : undefined,
       deletedAt: data.deletedAt ? new Date(data.deletedAt) : undefined,
       syncedAt: new Date(),
@@ -341,6 +341,27 @@ export class AggregatorPropertyMapper {
       room: RealtyType.Room,
     };
     return mapping[normalized] || RealtyType.Apartment;
+  }
+
+  /**
+   * Extract external URL from primaryData (platform-specific keys).
+   * realtorUa/realEstateLvivUa/mlsUkraine: ad_link
+   * olx: url
+   * domRia: beautiful_url → https://dom.ria.com/uk/{beautiful_url}
+   */
+  private extractUrlFromPrimaryData(primaryData: Record<string, unknown> | undefined): string | undefined {
+    if (!primaryData) return undefined;
+
+    if (typeof primaryData.ad_link === 'string' && primaryData.ad_link) {
+      return primaryData.ad_link;
+    }
+    if (typeof primaryData.url === 'string' && primaryData.url) {
+      return primaryData.url;
+    }
+    if (typeof primaryData.beautiful_url === 'string' && primaryData.beautiful_url) {
+      return `https://dom.ria.com/uk/${primaryData.beautiful_url}`;
+    }
+    return undefined;
   }
 
   /**
