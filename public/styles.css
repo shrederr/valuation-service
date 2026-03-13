@@ -818,7 +818,7 @@ header h1 {
 
 .meter-bar {
   height: 12px;
-  background: linear-gradient(90deg, #86efac, #fde68a, #fca5a5);
+  background: var(--gray-200);
   border-radius: 6px;
   position: relative;
   margin-bottom: 0.5rem;
@@ -826,11 +826,11 @@ header h1 {
 
 .meter-range {
   position: absolute;
+  top: 0;
   height: 100%;
+  background: linear-gradient(90deg, var(--success), var(--warning), var(--danger));
   border-radius: 6px;
-  border: 2px solid rgba(0,0,0,0.15);
-  box-sizing: border-box;
-  background: transparent;
+  opacity: 0.3;
 }
 
 .meter-marker {

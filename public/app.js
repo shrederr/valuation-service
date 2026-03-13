@@ -649,33 +649,22 @@ function displayFairPrice(fairPrice, askingPrice, analogs) {
   const rangeLow = fairPrice.range?.low || min;
   const rangeHigh = fairPrice.range?.high || max;
 
-  // Extend visual range to include asking price so bar is proportional
-  let visualMin = min;
-  let visualMax = max;
-  if (askingPrice && askingPrice > 0) {
-    const padding = (max - min) * 0.05 || 1000; // 5% padding
-    if (askingPrice < visualMin) visualMin = askingPrice - padding;
-    if (askingPrice > visualMax) visualMax = askingPrice + padding;
-  }
-  // Safety: ensure range is non-zero
-  if (visualMax <= visualMin) visualMax = visualMin + 1000;
-
-  const rangeStart = ((rangeLow - visualMin) / (visualMax - visualMin)) * 100;
-  const rangeWidth = ((rangeHigh - rangeLow) / (visualMax - visualMin)) * 100;
+  const rangeStart = ((rangeLow - min) / (max - min)) * 100;
+  const rangeWidth = ((rangeHigh - rangeLow) / (max - min)) * 100;
 
   elements.meterRange.style.left = `${rangeStart}%`;
   elements.meterRange.style.width = `${rangeWidth}%`;
 
   if (askingPrice) {
-    const markerPos = Math.min(100, Math.max(0, ((askingPrice - visualMin) / (visualMax - visualMin)) * 100));
+    const markerPos = Math.min(100, Math.max(0, ((askingPrice - min) / (max - min)) * 100));
     elements.meterMarker.style.left = `${markerPos}%`;
     elements.meterMarker.style.display = 'block';
   } else {
     elements.meterMarker.style.display = 'none';
   }
 
-  elements.meterMin.textContent = formatPrice(visualMin);
-  elements.meterMax.textContent = formatPrice(visualMax);
+  elements.meterMin.textContent = formatPrice(min);
+  elements.meterMax.textContent = formatPrice(max);
 
   // Verdict
   const verdict = fairPrice.verdict || 'in_market';
