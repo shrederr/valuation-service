@@ -190,7 +190,7 @@ export class ExportService {
     params.push(limit);
     const limitParam = `$${paramIdx}`;
 
-    const listings = await this.dataSource.query(
+    const listings: Record<string, unknown>[] = await this.dataSource.query(
       `SELECT * FROM unified_listings
        WHERE ${conditions.join(' AND ')}
        ORDER BY updated_at ASC
@@ -241,7 +241,7 @@ export class ExportService {
         stats.crmIds.push({ sourceId: listing.sourceId, crmId: result.id! });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        await this.updateExportStatus(raw.id, 'error', null, msg);
+        await this.updateExportStatus(raw.id as string, 'error', null, msg);
         stats.errors++;
         this.logger.error(`Export error for ${raw.id}: ${msg}`);
       }
@@ -253,7 +253,7 @@ export class ExportService {
   private async processUpdatedObjects(limit: number) {
     const stats = { exported: 0, errors: 0 };
 
-    const listings = await this.dataSource.query(
+    const listings: Record<string, unknown>[] = await this.dataSource.query(
       `SELECT * FROM unified_listings
        WHERE source_type = 'aggregator'
          AND is_active = true
@@ -273,15 +273,15 @@ export class ExportService {
         const dto = await this.toCrmMapper.map(listing);
         const result = await this.crmClientService.importObject(dto);
         if (!result.success) {
-          await this.updateExportStatus(listing.id, 'error', raw.crm_external_id, result.error);
+          await this.updateExportStatus(listing.id, 'error', raw.crm_external_id as string, result.error);
           stats.errors++;
           return;
         }
-        await this.updateExportStatus(listing.id, 'exported', result.id || raw.crm_external_id);
+        await this.updateExportStatus(listing.id, 'exported', result.id || raw.crm_external_id as string);
         stats.exported++;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        await this.updateExportStatus(raw.id, 'error', raw.crm_external_id, msg);
+        await this.updateExportStatus(raw.id as string, 'error', raw.crm_external_id as string, msg);
         stats.errors++;
       }
     });
@@ -377,7 +377,7 @@ export class ExportService {
 
         params.push(opts.perPlatform);
 
-        const listings = await this.dataSource.query(
+        const listings: Record<string, unknown>[] = await this.dataSource.query(
           `SELECT * FROM unified_listings
            WHERE ${conditions.join(' AND ')}
            ORDER BY published_at DESC NULLS LAST
@@ -431,7 +431,7 @@ export class ExportService {
             platformStats.crmIds.push({ sourceId: listing.sourceId, crmId: result.id! });
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            await this.updateExportStatus(raw.id, 'error', null, msg);
+            await this.updateExportStatus(raw.id as string, 'error', null, msg);
             platformStats.errors++;
             total.errors++;
             this.logger.error(`Export error for ${raw.id} (${platform}): ${msg}`);
