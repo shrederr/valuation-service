@@ -3,11 +3,11 @@ import { IsOptional, IsInt, IsString, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class ExportRunDto {
-  @ApiPropertyOptional({ default: 100 })
+  @ApiPropertyOptional({ default: 500 })
   @IsOptional()
   @IsInt()
   @Min(1)
-  @Max(1000)
+  @Max(5000)
   @Type(() => Number)
   batchSize?: number;
 

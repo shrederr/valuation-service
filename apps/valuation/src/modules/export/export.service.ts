@@ -14,6 +14,8 @@ import { ExportStatsDto } from './dto';
 export class ExportService {
   private readonly logger = new Logger(ExportService.name);
   private readonly batchSize: number;
+  private readonly concurrency: number;
+  private readonly throttleMs: number;
   private readonly enabled: boolean;
   private running = false;
   private runStartedAt: Date | null = null;
@@ -30,7 +32,9 @@ export class ExportService {
     private readonly toCrmMapper: ToCrmMapper,
     private readonly crmClientService: CrmClientService,
   ) {
-    this.batchSize = parseInt(this.configService.get('EXPORT_BATCH_SIZE', '100'), 10);
+    this.batchSize = parseInt(this.configService.get('EXPORT_BATCH_SIZE', '500'), 10);
+    this.concurrency = parseInt(this.configService.get('EXPORT_CONCURRENCY', '5'), 10);
+    this.throttleMs = parseInt(this.configService.get('EXPORT_THROTTLE_MS', '50'), 10);
     this.enabled = this.configService.get('EXPORT_ENABLED', 'false') === 'true';
   }
 
@@ -140,8 +144,13 @@ export class ExportService {
       stats.skipped += newStats.skipped;
       stats.crmIds.push(...newStats.crmIds);
 
+      // Re-export updated objects (price changes, etc.)
+      const updStats = await this.processUpdatedObjects(Math.min(batch, 100));
+      stats.exported += updStats.exported;
+      stats.errors += updStats.errors;
+
       this.logger.log(
-        `Export run done: exported=${stats.exported}, duplicates=${stats.duplicates}, errors=${stats.errors}, skipped=${stats.skipped}`,
+        `Export run done: new=${newStats.exported}, updated=${updStats.exported}, duplicates=${stats.duplicates}, errors=${stats.errors}, skipped=${stats.skipped}`,
       );
     } finally {
       this.releaseLock();
@@ -189,7 +198,8 @@ export class ExportService {
       params,
     );
 
-    for (const raw of listings) {
+    // Process listings with concurrency pool
+    await this.processWithConcurrency(listings, async (raw) => {
       try {
         const listing = this.hydrate(raw);
 
@@ -199,7 +209,7 @@ export class ExportService {
           await this.updateExportStatus(listing.id, 'duplicate', null,
             `Matched ${dedup.matchLevel}: ${dedup.matchedId}${dedup.similarity ? ` (sim=${dedup.similarity.toFixed(3)})` : ''}`);
           stats.duplicates++;
-          continue;
+          return;
         }
 
         // Translate description if needed (UK↔RU)
@@ -216,28 +226,25 @@ export class ExportService {
         if (listing.realtyType === 'apartment' && !dto.attributes?.square_living) {
           await this.updateExportStatus(listing.id, 'skipped', null, 'Missing square_living: no living_area, no kitchen_area to calculate');
           stats.skipped++;
-          continue;
+          return;
         }
 
         const result = await this.crmClientService.importObject(dto);
         if (!result.success) {
           await this.updateExportStatus(listing.id, 'error', null, result.error);
           stats.errors++;
-          continue;
+          return;
         }
         await this.updateExportStatus(listing.id, 'exported', result.id || null);
         stats.exported++;
         stats.crmIds.push({ sourceId: listing.sourceId, crmId: result.id! });
-
-        // Throttle: 150ms between requests
-        await new Promise(r => setTimeout(r, 150));
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         await this.updateExportStatus(raw.id, 'error', null, msg);
         stats.errors++;
         this.logger.error(`Export error for ${raw.id}: ${msg}`);
       }
-    }
+    });
 
     return stats;
   }
@@ -258,7 +265,7 @@ export class ExportService {
       [limit],
     );
 
-    for (const raw of listings) {
+    await this.processWithConcurrency(listings, async (raw) => {
       try {
         const listing = this.hydrate(raw);
         await this.translateIfNeeded(listing);
@@ -267,7 +274,7 @@ export class ExportService {
         if (!result.success) {
           await this.updateExportStatus(listing.id, 'error', raw.crm_external_id, result.error);
           stats.errors++;
-          continue;
+          return;
         }
         await this.updateExportStatus(listing.id, 'exported', result.id || raw.crm_external_id);
         stats.exported++;
@@ -276,7 +283,7 @@ export class ExportService {
         await this.updateExportStatus(raw.id, 'error', raw.crm_external_id, msg);
         stats.errors++;
       }
-    }
+    });
 
     return stats;
   }
@@ -379,7 +386,7 @@ export class ExportService {
 
         this.logger.log(`Platform ${platform}: ${listings.length} listings found`);
 
-        for (const raw of listings) {
+        await this.processWithConcurrency(listings, async (raw) => {
           try {
             const listing = this.hydrate(raw);
 
@@ -389,7 +396,7 @@ export class ExportService {
                 `Matched ${dedup.matchLevel}: ${dedup.matchedId}${dedup.similarity ? ` (sim=${dedup.similarity.toFixed(3)})` : ''}`);
               platformStats.duplicates++;
               total.duplicates++;
-              continue;
+              return;
             }
 
             await this.translateIfNeeded(listing);
@@ -405,7 +412,7 @@ export class ExportService {
               await this.updateExportStatus(listing.id, 'skipped', null, 'Missing square_living: no living_area, no kitchen_area to calculate');
               platformStats.skipped++;
               total.skipped++;
-              continue;
+              return;
             }
 
             const result = await this.crmClientService.importObject(dto);
@@ -413,15 +420,13 @@ export class ExportService {
               await this.updateExportStatus(listing.id, 'error', null, result.error);
               platformStats.errors++;
               total.errors++;
-              continue;
+              return;
             }
 
             await this.updateExportStatus(listing.id, 'exported', result.id || null);
             platformStats.exported++;
             total.exported++;
             platformStats.crmIds.push({ sourceId: listing.sourceId, crmId: result.id! });
-
-            await new Promise(r => setTimeout(r, 150));
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             await this.updateExportStatus(raw.id, 'error', null, msg);
@@ -429,7 +434,7 @@ export class ExportService {
             total.errors++;
             this.logger.error(`Export error for ${raw.id} (${platform}): ${msg}`);
           }
-        }
+        });
 
         this.logger.log(`Platform ${platform} done: exported=${platformStats.exported}, duplicates=${platformStats.duplicates}, errors=${platformStats.errors}`);
       }
@@ -646,6 +651,27 @@ export class ExportService {
     }
 
     return parts.join(' ');
+  }
+
+  /**
+   * Process items with limited concurrency.
+   * Runs up to `this.concurrency` tasks in parallel with optional throttle delay.
+   */
+  private async processWithConcurrency<T>(
+    items: T[],
+    handler: (item: T) => Promise<void>,
+  ): Promise<void> {
+    let idx = 0;
+    const workers = Array.from({ length: Math.min(this.concurrency, items.length) }, async () => {
+      while (idx < items.length) {
+        const i = idx++;
+        await handler(items[i]);
+        if (this.throttleMs > 0) {
+          await new Promise(r => setTimeout(r, this.throttleMs));
+        }
+      }
+    });
+    await Promise.all(workers);
   }
 
   /** Convert raw DB row to UnifiedListing-like object */
