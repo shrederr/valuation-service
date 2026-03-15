@@ -129,6 +129,19 @@ export class AggregatorPropertyMapper {
       streetId = isOlx ? undefined : (geoResolution.streetId ?? undefined);
     }
 
+    // For non-OLX: if coordinate-based matching only found nearest (no text match),
+    // try full text-based search across ALL streets in geo
+    if (!isOlx && geoId && textForMatching && geoResolution?.streetMatchMethod === 'nearest') {
+      const textStreetResult = await this.streetMatcherService.resolveStreetByText(textForMatching, geoId);
+      if (textStreetResult.streetId && textStreetResult.confidence >= 0.7) {
+        streetId = textStreetResult.streetId;
+        this.logger.debug(
+          `Street re-resolved by full text search for property ${data.id}: streetId=${streetId} ` +
+          `(${textStreetResult.matchMethod}, confidence=${textStreetResult.confidence.toFixed(2)})`,
+        );
+      }
+    }
+
     // For OLX: resolve street by text search within geo polygon (no coordinates)
     if (isOlx && geoId && textForMatching) {
       const textStreetResult = await this.streetMatcherService.resolveStreetByText(textForMatching, geoId);

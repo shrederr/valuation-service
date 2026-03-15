@@ -62,6 +62,15 @@ export class ExportController {
     return this.exportService.translateBatch(batchSize ? Number(batchSize) : 100);
   }
 
+  @Post('batch-resolve-streets')
+  @ApiOperation({ summary: 'Batch re-resolve streets for non-OLX listings using text matching' })
+  async batchResolveStreets(@Body() body?: { batchSize?: number; platforms?: string[] }) {
+    return this.exportService.batchResolveStreets({
+      batchSize: body?.batchSize || 500,
+      platforms: body?.platforms,
+    });
+  }
+
   @Post('deactivate')
   @ApiOperation({ summary: 'Archive exported objects that are no longer active on source platforms' })
   async deactivate() {

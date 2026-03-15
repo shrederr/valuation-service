@@ -215,8 +215,9 @@ export class ExportService {
         // Translate description if needed (UK↔RU)
         await this.translateIfNeeded(listing);
 
-        // OLX: re-resolve street from text (coordinates unreliable)
+        // Re-resolve street: OLX from text (coordinates unreliable), others via text fallback
         await this.fixOlxStreet(listing);
+        await this.fixStreetByText(listing);
 
         // Map and send
         const dto = await this.toCrmMapper.map(listing);
@@ -401,8 +402,9 @@ export class ExportService {
 
             await this.translateIfNeeded(listing);
 
-            // OLX: re-resolve street from text (coordinates unreliable)
+            // Re-resolve street: OLX from text (coordinates unreliable), others via text fallback
             await this.fixOlxStreet(listing);
+            await this.fixStreetByText(listing);
 
             const dto = await this.toCrmMapper.map(listing);
 
@@ -641,6 +643,14 @@ export class ExportService {
       if (pd.location && typeof pd.location === 'object') {
         if (pd.location.pathName) parts.push(String(pd.location.pathName));
       }
+
+      // domRia: street_name, street_name_uk
+      if (pd.street_name_uk) parts.push(String(pd.street_name_uk));
+      else if (pd.street_name) parts.push(String(pd.street_name));
+
+      // realtorUa: address
+      if (pd.address) parts.push(String(pd.address));
+
       // Title often contains address
       if (pd.title) parts.push(String(pd.title));
     }
@@ -651,6 +661,98 @@ export class ExportService {
     }
 
     return parts.join(' ');
+  }
+
+  /**
+   * For non-OLX listings: re-resolve street from text when current is nearest-only.
+   * Uses full text search across all streets in geo for better accuracy.
+   */
+  private async fixStreetByText(listing: UnifiedListing): Promise<void> {
+    if (listing.realtyPlatform === 'olx' || !listing.geoId) return;
+
+    const text = this.buildTextForStreetMatching(listing);
+    if (!text) return;
+
+    const streetResult = await this.streetMatcherService.resolveStreetByText(text, listing.geoId);
+    if (!streetResult.streetId || streetResult.confidence < 0.7) return;
+
+    if (streetResult.streetId !== listing.streetId) {
+      this.logger.debug(
+        `Street fix: sourceId=${listing.sourceId} (${listing.realtyPlatform}) streetId ${listing.streetId || 'null'} → ${streetResult.streetId} (confidence=${streetResult.confidence.toFixed(2)})`,
+      );
+      listing.streetId = streetResult.streetId;
+      await this.dataSource.query(
+        'UPDATE unified_listings SET street_id = $1 WHERE id = $2',
+        [streetResult.streetId, listing.id],
+      );
+    }
+  }
+
+  /**
+   * Batch re-resolve streets for all non-OLX aggregator listings using text matching.
+   * Returns stats about how many were updated.
+   */
+  async batchResolveStreets(opts?: { batchSize?: number; platforms?: string[] }): Promise<{
+    processed: number; updated: number; errors: number; byPlatform: Record<string, { processed: number; updated: number }>;
+  }> {
+    const batchSize = opts?.batchSize || 500;
+    const platforms = opts?.platforms || ['realtorUa', 'domRia', 'realEstateLvivUa', 'mlsUkraine'];
+    const stats = { processed: 0, updated: 0, errors: 0, byPlatform: {} as Record<string, { processed: number; updated: number }> };
+
+    for (const platform of platforms) {
+      const platformStats = { processed: 0, updated: 0 };
+      stats.byPlatform[platform] = platformStats;
+      let offset = 0;
+
+      while (true) {
+        const listings = await this.dataSource.query(
+          `SELECT * FROM unified_listings
+           WHERE source_type = 'aggregator'
+             AND is_active = true
+             AND deleted_at IS NULL
+             AND geo_id IS NOT NULL
+             AND realty_platform = $1
+           ORDER BY id
+           LIMIT $2 OFFSET $3`,
+          [platform, batchSize, offset],
+        );
+
+        if (listings.length === 0) break;
+
+        for (const raw of listings) {
+          try {
+            const listing = this.hydrate(raw);
+            const text = this.buildTextForStreetMatching(listing);
+            if (!text || !listing.geoId) {
+              stats.processed++;
+              platformStats.processed++;
+              continue;
+            }
+
+            const streetResult = await this.streetMatcherService.resolveStreetByText(text, listing.geoId);
+            if (streetResult.streetId && streetResult.confidence >= 0.7 && streetResult.streetId !== listing.streetId) {
+              await this.dataSource.query(
+                'UPDATE unified_listings SET street_id = $1 WHERE id = $2',
+                [streetResult.streetId, listing.id],
+              );
+              stats.updated++;
+              platformStats.updated++;
+            }
+            stats.processed++;
+            platformStats.processed++;
+          } catch (err) {
+            stats.errors++;
+            this.logger.warn(`batchResolveStreets error: ${err instanceof Error ? err.message : err}`);
+          }
+        }
+
+        offset += batchSize;
+        this.logger.log(`batchResolveStreets [${platform}]: processed=${platformStats.processed}, updated=${platformStats.updated}, offset=${offset}`);
+      }
+    }
+
+    this.logger.log(`batchResolveStreets done: processed=${stats.processed}, updated=${stats.updated}, errors=${stats.errors}`);
+    return stats;
   }
 
   /**
