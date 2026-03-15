@@ -167,10 +167,209 @@ export class ExportService {
    * Continuous export: loops until all pending objects are exported or stopExport() is called.
    * Uses higher concurrency and no throttle for maximum throughput.
    */
+  /**
+   * Pre-dedup: batch check all pending objects for duplicates WITHOUT exporting.
+   * Marks duplicates in DB (export_status='duplicate') so subsequent export can skip dedup.
+   */
+  async preDedup(opts?: {
+    batchSize?: number;
+    concurrency?: number;
+    platforms?: string[];
+  }): Promise<{ checked: number; duplicates: number; errors: number; batches: number; elapsed: string }> {
+    if (!this.acquireLock()) {
+      this.logger.warn('Export already running, skipping preDedup');
+      return { checked: 0, duplicates: 0, errors: 0, batches: 0, elapsed: '0s' };
+    }
+
+    const batchSize = opts?.batchSize || 1000;
+    const concurrencyOverride = opts?.concurrency || 10;
+    const platforms = opts?.platforms;
+    const startTime = Date.now();
+    this.stopRequested = false;
+
+    const total = { checked: 0, duplicates: 0, errors: 0 };
+    let batchNum = 0;
+
+    try {
+      this.logger.log(`=== PRE-DEDUP STARTED (batch=${batchSize}, concurrency=${concurrencyOverride}) ===`);
+
+      while (!this.stopRequested) {
+        batchNum++;
+
+        let platformFilter = '';
+        const params: unknown[] = [];
+        let paramIdx = 1;
+
+        if (platforms?.length) {
+          platformFilter = `AND realty_platform = ANY($${paramIdx})`;
+          params.push(platforms);
+          paramIdx++;
+        }
+
+        params.push(batchSize);
+
+        const listings: Record<string, unknown>[] = await this.dataSource.query(
+          `SELECT * FROM unified_listings
+           WHERE source_type = 'aggregator'
+             AND is_active = true
+             AND export_status IS NULL
+             AND deleted_at IS NULL
+             AND price > 0 AND total_area > 0 AND geo_id IS NOT NULL
+             ${platformFilter}
+           ORDER BY published_at DESC NULLS LAST
+           LIMIT $${paramIdx}`,
+          params,
+        );
+
+        if (listings.length === 0) {
+          this.logger.log('No more pending listings — pre-dedup complete');
+          break;
+        }
+
+        const batchStats = { checked: 0, duplicates: 0, errors: 0 };
+
+        await this.processWithConcurrencyOverride(listings, concurrencyOverride, async (raw) => {
+          if (this.stopRequested) return;
+          try {
+            const listing = this.hydrate(raw);
+
+            const dedup = await this.dedupCheckService.isDuplicate(listing);
+            if (dedup.isDuplicate) {
+              await this.updateExportStatus(listing.id, 'duplicate', null,
+                `Matched ${dedup.matchLevel}: ${dedup.matchedId}${dedup.similarity ? ` (sim=${dedup.similarity.toFixed(3)})` : ''}`);
+              batchStats.duplicates++;
+            }
+            batchStats.checked++;
+          } catch (err) {
+            batchStats.errors++;
+            this.logger.warn(`Pre-dedup error for ${raw.id}: ${err instanceof Error ? err.message : err}`);
+          }
+        });
+
+        total.checked += batchStats.checked;
+        total.duplicates += batchStats.duplicates;
+        total.errors += batchStats.errors;
+
+        const elapsed = this.formatElapsed(Date.now() - startTime);
+        const rate = Math.round(total.checked / ((Date.now() - startTime) / 60000));
+        this.runAllProgress = {
+          exported: 0, duplicates: total.duplicates, errors: total.errors,
+          skipped: total.checked - total.duplicates, elapsed, batchNum,
+        };
+
+        this.logger.log(
+          `Pre-dedup batch #${batchNum}: +${batchStats.checked} checked, +${batchStats.duplicates} dup | ` +
+          `Total: ${total.checked} checked, ${total.duplicates} dup | ${elapsed} | ~${rate}/min`,
+        );
+      }
+    } finally {
+      this.releaseLock();
+      this.stopRequested = false;
+    }
+
+    const elapsed = this.formatElapsed(Date.now() - startTime);
+    this.logger.log(`=== PRE-DEDUP DONE: ${total.checked} checked, ${total.duplicates} duplicates in ${elapsed} (${batchNum} batches) ===`);
+    return { ...total, batches: batchNum, elapsed };
+  }
+
+  /**
+   * Resend all exported objects to CRM as updates.
+   * This triggers handleUpdate() path on CRM side → PushToQueueBehaviour → site sync.
+   */
+  async resendAll(opts?: {
+    batchSize?: number;
+    concurrency?: number;
+  }): Promise<{ resent: number; errors: number; batches: number; elapsed: string }> {
+    if (!this.acquireLock()) {
+      this.logger.warn('Export already running, skipping resendAll');
+      return { resent: 0, errors: 0, batches: 0, elapsed: '0s' };
+    }
+
+    const batchSize = opts?.batchSize || 500;
+    const concurrencyOverride = opts?.concurrency || 10;
+    const startTime = Date.now();
+    this.stopRequested = false;
+
+    const total = { resent: 0, errors: 0 };
+    let batchNum = 0;
+    let offset = 0;
+
+    try {
+      this.logger.log(`=== RESEND ALL STARTED (batch=${batchSize}, concurrency=${concurrencyOverride}) ===`);
+
+      while (!this.stopRequested) {
+        batchNum++;
+
+        const listings: Record<string, unknown>[] = await this.dataSource.query(
+          `SELECT * FROM unified_listings
+           WHERE export_status = 'exported'
+             AND crm_external_id IS NOT NULL
+             AND is_active = true
+             AND deleted_at IS NULL
+           ORDER BY last_exported_at ASC NULLS FIRST
+           LIMIT $1 OFFSET $2`,
+          [batchSize, offset],
+        );
+
+        if (listings.length === 0) {
+          this.logger.log('No more exported listings — resend complete');
+          break;
+        }
+
+        const batchStats = { resent: 0, errors: 0 };
+
+        await this.processWithConcurrencyOverride(listings, concurrencyOverride, async (raw) => {
+          if (this.stopRequested) return;
+          try {
+            const listing = this.hydrate(raw);
+            await this.translateIfNeeded(listing);
+
+            const dto = await this.toCrmMapper.map(listing);
+            const result = await this.crmClientService.importObject(dto);
+
+            if (result.success) {
+              batchStats.resent++;
+            } else {
+              batchStats.errors++;
+              this.logger.warn(`Resend failed: sourceId=${listing.sourceId}: ${result.error}`);
+            }
+          } catch (err) {
+            batchStats.errors++;
+            this.logger.warn(`Resend error for ${raw.id}: ${err instanceof Error ? err.message : err}`);
+          }
+        });
+
+        total.resent += batchStats.resent;
+        total.errors += batchStats.errors;
+        offset += listings.length;
+
+        const elapsed = this.formatElapsed(Date.now() - startTime);
+        const rate = Math.round(total.resent / ((Date.now() - startTime) / 60000));
+        this.runAllProgress = {
+          exported: total.resent, duplicates: 0, errors: total.errors,
+          skipped: 0, elapsed, batchNum,
+        };
+
+        this.logger.log(
+          `Resend batch #${batchNum}: +${batchStats.resent} sent, +${batchStats.errors} err | ` +
+          `Total: ${total.resent} resent, ${total.errors} err | ${elapsed} | ~${rate}/min`,
+        );
+      }
+    } finally {
+      this.releaseLock();
+      this.stopRequested = false;
+    }
+
+    const elapsed = this.formatElapsed(Date.now() - startTime);
+    this.logger.log(`=== RESEND ALL DONE: ${total.resent} resent, ${total.errors} errors in ${elapsed} (${batchNum} batches) ===`);
+    return { ...total, batches: batchNum, elapsed };
+  }
+
   async runAll(opts?: {
     batchSize?: number;
     concurrency?: number;
     platforms?: string[];
+    skipDedup?: boolean;
   }): Promise<{ exported: number; duplicates: number; errors: number; skipped: number; batches: number; elapsed: string }> {
     if (!this.acquireLock()) {
       this.logger.warn('Export already running, skipping runAll');
@@ -180,6 +379,7 @@ export class ExportService {
     const batchSize = opts?.batchSize || 1000;
     const concurrencyOverride = opts?.concurrency || 10;
     const platforms = opts?.platforms;
+    const skipDedup = opts?.skipDedup || false;
     const startTime = Date.now();
     this.stopRequested = false;
 
@@ -187,7 +387,7 @@ export class ExportService {
     let batchNum = 0;
 
     try {
-      this.logger.log(`=== FULL EXPORT STARTED (batch=${batchSize}, concurrency=${concurrencyOverride}, platforms=${platforms?.join(',') || 'all'}) ===`);
+      this.logger.log(`=== FULL EXPORT STARTED (batch=${batchSize}, concurrency=${concurrencyOverride}, platforms=${platforms?.join(',') || 'all'}, skipDedup=${skipDedup}) ===`);
 
       while (!this.stopRequested) {
         batchNum++;
@@ -231,12 +431,15 @@ export class ExportService {
           try {
             const listing = this.hydrate(raw);
 
-            const dedup = await this.dedupCheckService.isDuplicate(listing);
-            if (dedup.isDuplicate) {
-              await this.updateExportStatus(listing.id, 'duplicate', null,
-                `Matched ${dedup.matchLevel}: ${dedup.matchedId}${dedup.similarity ? ` (sim=${dedup.similarity.toFixed(3)})` : ''}`);
-              batchStats.duplicates++;
-              return;
+            // Dedup check (skippable if pre-dedup was already run)
+            if (!skipDedup) {
+              const dedup = await this.dedupCheckService.isDuplicate(listing);
+              if (dedup.isDuplicate) {
+                await this.updateExportStatus(listing.id, 'duplicate', null,
+                  `Matched ${dedup.matchLevel}: ${dedup.matchedId}${dedup.similarity ? ` (sim=${dedup.similarity.toFixed(3)})` : ''}`);
+                batchStats.duplicates++;
+                return;
+              }
             }
 
             await this.translateIfNeeded(listing);

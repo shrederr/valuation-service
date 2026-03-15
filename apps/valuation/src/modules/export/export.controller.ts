@@ -73,16 +73,44 @@ export class ExportController {
 
   @Post('run-all')
   @ApiOperation({ summary: 'Continuous export: loops until all pending objects are exported' })
-  async runAll(@Body() body?: { batchSize?: number; concurrency?: number; platforms?: string[] }) {
+  async runAll(@Body() body?: { batchSize?: number; concurrency?: number; platforms?: string[]; skipDedup?: boolean }) {
     // Fire and forget — runs in background, check progress via GET /progress
     const promise = this.exportService.runAll({
       batchSize: body?.batchSize || 1000,
       concurrency: body?.concurrency || 10,
       platforms: body?.platforms,
+      skipDedup: body?.skipDedup || false,
     });
     // Don't await — return immediately so HTTP doesn't timeout
     promise.catch((err) => console.error('runAll error:', err));
-    return { started: true, message: 'Full export started. Check GET /api/v1/export/progress for status.' };
+    return {
+      started: true,
+      skipDedup: body?.skipDedup || false,
+      message: `Full export started${body?.skipDedup ? ' (dedup skipped)' : ''}. Check GET /api/v1/export/progress for status.`,
+    };
+  }
+
+  @Post('pre-dedup')
+  @ApiOperation({ summary: 'Batch dedup check: marks all pending duplicates without exporting (DB only, no CRM calls)' })
+  async preDedup(@Body() body?: { batchSize?: number; concurrency?: number; platforms?: string[] }) {
+    const promise = this.exportService.preDedup({
+      batchSize: body?.batchSize || 1000,
+      concurrency: body?.concurrency || 10,
+      platforms: body?.platforms,
+    });
+    promise.catch((err) => console.error('preDedup error:', err));
+    return { started: true, message: 'Pre-dedup started. Check GET /api/v1/export/progress for status.' };
+  }
+
+  @Post('resend-all')
+  @ApiOperation({ summary: 'Re-send all exported objects to CRM (triggers site sync via handleUpdate)' })
+  async resendAll(@Body() body?: { batchSize?: number; concurrency?: number }) {
+    const promise = this.exportService.resendAll({
+      batchSize: body?.batchSize || 500,
+      concurrency: body?.concurrency || 10,
+    });
+    promise.catch((err) => console.error('resendAll error:', err));
+    return { started: true, message: 'Resend all started. Check GET /api/v1/export/progress for status.' };
   }
 
   @Post('stop')
