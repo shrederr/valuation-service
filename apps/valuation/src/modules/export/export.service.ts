@@ -790,7 +790,25 @@ export class ExportService {
     const text = this.buildTextForStreetMatching(listing);
     if (!text) return;
 
-    const streetResult = await this.streetMatcherService.resolveStreetByText(text, listing.geoId);
+    // Try matching in listing's geo first
+    let streetResult = await this.streetMatcherService.resolveStreetByText(text, listing.geoId);
+
+    // Fallback: if district-level geo didn't match, try parent city
+    if (!streetResult.streetId) {
+      const parentCity = await this.dataSource.query(
+        `SELECT g2.id FROM geo g1
+         JOIN geo g2 ON ST_Contains(g2.polygon, ST_Centroid(g1.polygon))
+           AND g2.type IN ('city', 'village')
+           AND g2.id != g1.id
+         WHERE g1.id = $1
+         LIMIT 1`,
+        [listing.geoId],
+      );
+      if (parentCity.length > 0) {
+        streetResult = await this.streetMatcherService.resolveStreetByText(text, parentCity[0].id);
+      }
+    }
+
     if (!streetResult.streetId) return;
 
     // Only update if different from current
