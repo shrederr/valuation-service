@@ -28,7 +28,7 @@ export class ExportByPlatformsDto {
   @IsOptional()
   @IsInt()
   @Min(1)
-  @Max(500)
+  @Max(5000)
   @Type(() => Number)
   perPlatform?: number;
 
