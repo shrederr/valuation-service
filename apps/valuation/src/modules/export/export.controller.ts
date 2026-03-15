@@ -71,6 +71,32 @@ export class ExportController {
     });
   }
 
+  @Post('run-all')
+  @ApiOperation({ summary: 'Continuous export: loops until all pending objects are exported' })
+  async runAll(@Body() body?: { batchSize?: number; concurrency?: number; platforms?: string[] }) {
+    // Fire and forget — runs in background, check progress via GET /progress
+    const promise = this.exportService.runAll({
+      batchSize: body?.batchSize || 1000,
+      concurrency: body?.concurrency || 10,
+      platforms: body?.platforms,
+    });
+    // Don't await — return immediately so HTTP doesn't timeout
+    promise.catch((err) => console.error('runAll error:', err));
+    return { started: true, message: 'Full export started. Check GET /api/v1/export/progress for status.' };
+  }
+
+  @Post('stop')
+  @ApiOperation({ summary: 'Stop running export after current batch' })
+  async stop() {
+    return this.exportService.stopExport();
+  }
+
+  @Get('progress')
+  @ApiOperation({ summary: 'Get progress of run-all export' })
+  getProgress() {
+    return this.exportService.getRunAllProgress();
+  }
+
   @Post('deactivate')
   @ApiOperation({ summary: 'Archive exported objects that are no longer active on source platforms' })
   async deactivate() {

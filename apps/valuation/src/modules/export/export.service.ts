@@ -19,9 +19,11 @@ export class ExportService {
   private readonly enabled: boolean;
   private running = false;
   private runStartedAt: Date | null = null;
-  private readonly LOCK_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+  private readonly LOCK_TIMEOUT_MS = 4 * 60 * 60 * 1000; // 4 hours for full export
   private lastRunAt: Date | null = null;
   private lastRunStats: { exported: number; duplicates: number; errors: number; skipped: number } | null = null;
+  private stopRequested = false;
+  private runAllProgress: { exported: number; duplicates: number; errors: number; skipped: number; elapsed: string; batchNum: number } | null = null;
 
   constructor(
     private readonly dataSource: DataSource,
@@ -159,6 +161,177 @@ export class ExportService {
     }
 
     return stats;
+  }
+
+  /**
+   * Continuous export: loops until all pending objects are exported or stopExport() is called.
+   * Uses higher concurrency and no throttle for maximum throughput.
+   */
+  async runAll(opts?: {
+    batchSize?: number;
+    concurrency?: number;
+    platforms?: string[];
+  }): Promise<{ exported: number; duplicates: number; errors: number; skipped: number; batches: number; elapsed: string }> {
+    if (!this.acquireLock()) {
+      this.logger.warn('Export already running, skipping runAll');
+      return { exported: 0, duplicates: 0, errors: 0, skipped: 0, batches: 0, elapsed: '0s' };
+    }
+
+    const batchSize = opts?.batchSize || 1000;
+    const concurrencyOverride = opts?.concurrency || 10;
+    const platforms = opts?.platforms;
+    const startTime = Date.now();
+    this.stopRequested = false;
+
+    const total = { exported: 0, duplicates: 0, errors: 0, skipped: 0 };
+    let batchNum = 0;
+
+    try {
+      this.logger.log(`=== FULL EXPORT STARTED (batch=${batchSize}, concurrency=${concurrencyOverride}, platforms=${platforms?.join(',') || 'all'}) ===`);
+
+      while (!this.stopRequested) {
+        batchNum++;
+
+        // Build platform filter
+        let platformFilter = '';
+        const params: unknown[] = [];
+        let paramIdx = 1;
+
+        if (platforms?.length) {
+          platformFilter = `AND realty_platform = ANY($${paramIdx})`;
+          params.push(platforms);
+          paramIdx++;
+        }
+
+        params.push(batchSize);
+
+        const listings: Record<string, unknown>[] = await this.dataSource.query(
+          `SELECT * FROM unified_listings
+           WHERE source_type = 'aggregator'
+             AND is_active = true
+             AND export_status IS NULL
+             AND deleted_at IS NULL
+             AND price > 0 AND total_area > 0 AND geo_id IS NOT NULL
+             ${platformFilter}
+           ORDER BY published_at DESC NULLS LAST
+           LIMIT $${paramIdx}`,
+          params,
+        );
+
+        if (listings.length === 0) {
+          this.logger.log('No more pending listings — export complete');
+          break;
+        }
+
+        const batchStats = { exported: 0, duplicates: 0, errors: 0, skipped: 0 };
+
+        // Use higher concurrency, no throttle
+        await this.processWithConcurrencyOverride(listings, concurrencyOverride, async (raw) => {
+          if (this.stopRequested) return;
+          try {
+            const listing = this.hydrate(raw);
+
+            const dedup = await this.dedupCheckService.isDuplicate(listing);
+            if (dedup.isDuplicate) {
+              await this.updateExportStatus(listing.id, 'duplicate', null,
+                `Matched ${dedup.matchLevel}: ${dedup.matchedId}${dedup.similarity ? ` (sim=${dedup.similarity.toFixed(3)})` : ''}`);
+              batchStats.duplicates++;
+              return;
+            }
+
+            await this.translateIfNeeded(listing);
+            await this.fixOlxStreet(listing);
+            await this.fixStreetByText(listing);
+
+            const dto = await this.toCrmMapper.map(listing);
+
+            if (listing.realtyType === 'apartment' && !dto.attributes?.square_living) {
+              await this.updateExportStatus(listing.id, 'skipped', null, 'Missing square_living');
+              batchStats.skipped++;
+              return;
+            }
+
+            const result = await this.crmClientService.importObject(dto);
+            if (!result.success) {
+              await this.updateExportStatus(listing.id, 'error', null, result.error);
+              batchStats.errors++;
+              return;
+            }
+            await this.updateExportStatus(listing.id, 'exported', result.id || null);
+            batchStats.exported++;
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            await this.updateExportStatus(raw.id as string, 'error', null, msg);
+            batchStats.errors++;
+          }
+        });
+
+        total.exported += batchStats.exported;
+        total.duplicates += batchStats.duplicates;
+        total.errors += batchStats.errors;
+        total.skipped += batchStats.skipped;
+
+        const elapsed = this.formatElapsed(Date.now() - startTime);
+        const rate = Math.round(total.exported / ((Date.now() - startTime) / 60000));
+        this.runAllProgress = { ...total, elapsed, batchNum };
+
+        this.logger.log(
+          `Batch #${batchNum}: +${batchStats.exported} exported, +${batchStats.duplicates} dup, +${batchStats.errors} err | ` +
+          `Total: ${total.exported} exported, ${total.duplicates} dup, ${total.errors} err | ${elapsed} | ~${rate}/min`,
+        );
+      }
+    } finally {
+      this.releaseLock();
+      this.stopRequested = false;
+      this.lastRunStats = { exported: total.exported, duplicates: total.duplicates, errors: total.errors, skipped: total.skipped };
+    }
+
+    const elapsed = this.formatElapsed(Date.now() - startTime);
+    this.logger.log(`=== FULL EXPORT DONE: ${total.exported} exported, ${total.duplicates} dup, ${total.errors} err in ${elapsed} (${batchNum} batches) ===`);
+    return { ...total, batches: batchNum, elapsed };
+  }
+
+  stopExport(): { stopped: boolean; progress: typeof this.runAllProgress } {
+    if (!this.running) {
+      return { stopped: false, progress: null };
+    }
+    this.stopRequested = true;
+    this.logger.log('Stop requested — will stop after current batch');
+    return { stopped: true, progress: this.runAllProgress };
+  }
+
+  getRunAllProgress() {
+    return {
+      running: this.running,
+      stopRequested: this.stopRequested,
+      progress: this.runAllProgress,
+    };
+  }
+
+  private formatElapsed(ms: number): string {
+    const s = Math.floor(ms / 1000);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    return h > 0 ? `${h}h${m}m` : `${m}m${s % 60}s`;
+  }
+
+  /**
+   * Process items with custom concurrency and NO throttle (for bulk export).
+   */
+  private async processWithConcurrencyOverride<T>(
+    items: T[],
+    concurrency: number,
+    handler: (item: T) => Promise<void>,
+  ): Promise<void> {
+    let idx = 0;
+    const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+      while (idx < items.length) {
+        const i = idx++;
+        if (i >= items.length) break;
+        await handler(items[i]);
+      }
+    });
+    await Promise.all(workers);
   }
 
   private async processNewObjects(limit: number, filters?: { geoId?: number; realtyType?: string }) {
