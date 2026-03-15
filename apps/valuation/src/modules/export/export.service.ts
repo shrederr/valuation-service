@@ -370,6 +370,7 @@ export class ExportService {
     concurrency?: number;
     platforms?: string[];
     skipDedup?: boolean;
+    skipTranslation?: boolean;
   }): Promise<{ exported: number; duplicates: number; errors: number; skipped: number; batches: number; elapsed: string }> {
     if (!this.acquireLock()) {
       this.logger.warn('Export already running, skipping runAll');
@@ -380,6 +381,7 @@ export class ExportService {
     const concurrencyOverride = opts?.concurrency || 10;
     const platforms = opts?.platforms;
     const skipDedup = opts?.skipDedup || false;
+    const skipTranslation = opts?.skipTranslation ?? skipDedup; // skip translation when skipDedup (fast mode)
     const startTime = Date.now();
     this.stopRequested = false;
 
@@ -387,7 +389,7 @@ export class ExportService {
     let batchNum = 0;
 
     try {
-      this.logger.log(`=== FULL EXPORT STARTED (batch=${batchSize}, concurrency=${concurrencyOverride}, platforms=${platforms?.join(',') || 'all'}, skipDedup=${skipDedup}) ===`);
+      this.logger.log(`=== FULL EXPORT STARTED (batch=${batchSize}, concurrency=${concurrencyOverride}, platforms=${platforms?.join(',') || 'all'}, skipDedup=${skipDedup}, skipTranslation=${skipTranslation}) ===`);
 
       while (!this.stopRequested) {
         batchNum++;
@@ -442,7 +444,9 @@ export class ExportService {
               }
             }
 
-            await this.translateIfNeeded(listing);
+            if (!skipTranslation) {
+              await this.translateIfNeeded(listing);
+            }
             await this.fixOlxStreet(listing);
             await this.fixStreetByText(listing);
 
