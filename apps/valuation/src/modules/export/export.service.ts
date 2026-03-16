@@ -916,15 +916,9 @@ export class ExportService {
   async translateBatch(batchSize = 100): Promise<{ translated: number; errors: number; total: number }> {
     const stats = { translated: 0, errors: 0, total: 0 };
 
-    if (!this.translationService.isEnabled()) {
-      return { ...stats, total: -1 };
-    }
-
     const listings = await this.dataSource.query(
       `SELECT * FROM unified_listings
        WHERE source_type = 'aggregator'
-         AND is_active = true
-         AND deleted_at IS NULL
          AND description IS NOT NULL
          AND (
            (description->>'uk' IS NOT NULL AND description->>'uk' != '' AND (description->>'ru' IS NULL OR description->>'ru' = ''))
@@ -940,6 +934,7 @@ export class ExportService {
     this.logger.log(`Translation batch: ${listings.length} listings to translate`);
 
     for (const raw of listings) {
+      if (this.stopRequested) break;
       try {
         const listing = this.hydrate(raw);
         const updated = await this.translateIfNeeded(listing);
@@ -952,6 +947,95 @@ export class ExportService {
 
     this.logger.log(`Translation batch done: ${stats.translated} translated, ${stats.errors} errors`);
     return stats;
+  }
+
+  /**
+   * Continuous batch translation of all objects missing ru/uk descriptions.
+   * Runs in background, can be stopped via stopExport().
+   * Prioritizes exported objects first, then pending.
+   */
+  async translateAll(batchSize = 500, concurrency = 10): Promise<void> {
+    if (this.running) {
+      this.logger.warn('Export/translation already running');
+      return;
+    }
+
+    this.running = true;
+    this.stopRequested = false;
+    this.runStartedAt = new Date();
+    this.runAllProgress = { exported: 0, duplicates: 0, errors: 0, skipped: 0, elapsed: '0m0s', batchNum: 0 };
+    const stats = { translated: 0, skipped: 0, errors: 0 };
+
+    this.logger.log(`=== translateAll started: batchSize=${batchSize}, concurrency=${concurrency} ===`);
+
+    try {
+      let batchNum = 0;
+      while (!this.stopRequested) {
+        batchNum++;
+
+        // Prioritize exported objects first, then pending
+        const listings = await this.dataSource.query(
+          `SELECT * FROM unified_listings
+           WHERE source_type = 'aggregator'
+             AND description IS NOT NULL
+             AND (
+               (description->>'uk' IS NOT NULL AND TRIM(description->>'uk') != '' AND (description->>'ru' IS NULL OR TRIM(description->>'ru') = ''))
+               OR
+               (description->>'ru' IS NOT NULL AND TRIM(description->>'ru') != '' AND (description->>'uk' IS NULL OR TRIM(description->>'uk') = ''))
+             )
+           ORDER BY
+             CASE WHEN export_status = 'exported' THEN 0 ELSE 1 END,
+             updated_at DESC
+           LIMIT $1`,
+          [batchSize],
+        );
+
+        if (listings.length === 0) {
+          this.logger.log('translateAll: no more listings to translate');
+          break;
+        }
+
+        this.logger.log(`translateAll batch #${batchNum}: ${listings.length} listings`);
+
+        // Process with concurrency
+        let idx = 0;
+        const workers = Array.from({ length: Math.min(concurrency, listings.length) }, async () => {
+          while (idx < listings.length && !this.stopRequested) {
+            const i = idx++;
+            if (i >= listings.length) break;
+            const raw = listings[i];
+            try {
+              const listing = this.hydrate(raw);
+              const updated = await this.translateIfNeeded(listing);
+              if (updated) stats.translated++;
+              else stats.skipped++;
+            } catch (err) {
+              stats.errors++;
+              this.logger.warn(`translateAll error for ${raw.id}: ${err instanceof Error ? err.message : err}`);
+            }
+          }
+        });
+        await Promise.all(workers);
+
+        // Update progress
+        const elapsed = Date.now() - this.runStartedAt!.getTime();
+        const mins = Math.floor(elapsed / 60000);
+        const secs = Math.floor((elapsed % 60000) / 1000);
+        this.runAllProgress = {
+          exported: stats.translated,
+          duplicates: 0,
+          errors: stats.errors,
+          skipped: stats.skipped,
+          elapsed: `${mins}m${secs}s`,
+          batchNum,
+        };
+
+        this.logger.log(`translateAll progress: translated=${stats.translated}, skipped=${stats.skipped}, errors=${stats.errors}, elapsed=${mins}m${secs}s`);
+      }
+    } finally {
+      this.running = false;
+      this.logger.log(`=== translateAll finished: translated=${stats.translated}, skipped=${stats.skipped}, errors=${stats.errors} ===`);
+    }
   }
 
   /**

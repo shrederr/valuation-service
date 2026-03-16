@@ -62,6 +62,17 @@ export class ExportController {
     return this.exportService.translateBatch(batchSize ? Number(batchSize) : 100);
   }
 
+  @Post('translate-all')
+  @ApiOperation({ summary: 'Continuous translation of all objects missing RU/UK descriptions (uses Google Translate fallback)' })
+  async translateAll(@Body() body?: { batchSize?: number; concurrency?: number }) {
+    const promise = this.exportService.translateAll(
+      body?.batchSize || 500,
+      body?.concurrency || 10,
+    );
+    promise.catch((err) => console.error('translateAll error:', err));
+    return { started: true, message: 'Translate all started. Check GET /api/v1/export/progress for status.' };
+  }
+
   @Post('batch-resolve-streets')
   @ApiOperation({ summary: 'Batch re-resolve streets for non-OLX listings using text matching' })
   async batchResolveStreets(@Body() body?: { batchSize?: number; platforms?: string[] }) {
