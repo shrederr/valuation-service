@@ -977,6 +977,8 @@ export class ExportService {
         const listings = await this.dataSource.query(
           `SELECT * FROM unified_listings
            WHERE source_type = 'aggregator'
+             AND is_active = true
+             AND deleted_at IS NULL
              AND description IS NOT NULL
              AND (
                (description->>'uk' IS NOT NULL AND TRIM(description->>'uk') != '' AND (description->>'ru' IS NULL OR TRIM(description->>'ru') = ''))
