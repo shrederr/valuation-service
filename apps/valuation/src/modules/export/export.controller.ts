@@ -64,10 +64,11 @@ export class ExportController {
 
   @Post('translate-all')
   @ApiOperation({ summary: 'Continuous translation of all objects missing RU/UK descriptions (uses Google Translate fallback)' })
-  async translateAll(@Body() body?: { batchSize?: number; concurrency?: number }) {
+  async translateAll(@Body() body?: { batchSize?: number; concurrency?: number; throttleMs?: number }) {
     const promise = this.exportService.translateAll(
-      body?.batchSize || 500,
-      body?.concurrency || 10,
+      body?.batchSize || 200,
+      body?.concurrency || 3,
+      body?.throttleMs || 300,
     );
     promise.catch((err) => console.error('translateAll error:', err));
     return { started: true, message: 'Translate all started. Check GET /api/v1/export/progress for status.' };

@@ -954,7 +954,7 @@ export class ExportService {
    * Runs in background, can be stopped via stopExport().
    * Prioritizes exported objects first, then pending.
    */
-  async translateAll(batchSize = 500, concurrency = 10): Promise<void> {
+  async translateAll(batchSize = 200, concurrency = 3, throttleMs = 300): Promise<void> {
     if (this.running) {
       this.logger.warn('Export/translation already running');
       return;
@@ -966,7 +966,7 @@ export class ExportService {
     this.runAllProgress = { exported: 0, duplicates: 0, errors: 0, skipped: 0, elapsed: '0m0s', batchNum: 0 };
     const stats = { translated: 0, skipped: 0, errors: 0 };
 
-    this.logger.log(`=== translateAll started: batchSize=${batchSize}, concurrency=${concurrency} ===`);
+    this.logger.log(`=== translateAll started: batchSize=${batchSize}, concurrency=${concurrency}, throttleMs=${throttleMs} ===`);
 
     try {
       let batchNum = 0;
@@ -999,7 +999,7 @@ export class ExportService {
 
         this.logger.log(`translateAll batch #${batchNum}: ${listings.length} listings`);
 
-        // Process with concurrency
+        // Process with concurrency + throttle to avoid Google rate limiting
         let idx = 0;
         const workers = Array.from({ length: Math.min(concurrency, listings.length) }, async () => {
           while (idx < listings.length && !this.stopRequested) {
@@ -1014,6 +1014,10 @@ export class ExportService {
             } catch (err) {
               stats.errors++;
               this.logger.warn(`translateAll error for ${raw.id}: ${err instanceof Error ? err.message : err}`);
+            }
+            // Throttle to avoid rate limiting
+            if (throttleMs > 0) {
+              await new Promise(r => setTimeout(r, throttleMs));
             }
           }
         });
