@@ -10,6 +10,9 @@ import { CrmClientService } from './services/crm-client.service';
 import { StreetMatcherService } from '../osm/street-matcher.service';
 import { ExportStatsDto } from './dto';
 
+/** Geo IDs of regions excluded from export (Odessa region + all children resolved at startup) */
+const EXCLUDED_REGION_IDS = [18263]; // Одеська область top-level geo ID
+
 @Injectable()
 export class ExportService {
   private readonly logger = new Logger(ExportService.name);
@@ -24,6 +27,7 @@ export class ExportService {
   private lastRunStats: { exported: number; duplicates: number; errors: number; skipped: number } | null = null;
   private stopRequested = false;
   private runAllProgress: { exported: number; duplicates: number; errors: number; skipped: number; elapsed: string; batchNum: number } | null = null;
+  private excludedGeoIds: Set<number> = new Set();
 
   constructor(
     private readonly dataSource: DataSource,
@@ -38,6 +42,35 @@ export class ExportService {
     this.concurrency = parseInt(this.configService.get('EXPORT_CONCURRENCY', '5'), 10);
     this.throttleMs = parseInt(this.configService.get('EXPORT_THROTTLE_MS', '50'), 10);
     this.enabled = this.configService.get('EXPORT_ENABLED', 'false') === 'true';
+    // Load excluded geo IDs (region + all children) at startup
+    this.loadExcludedGeoIds();
+  }
+
+  private async loadExcludedGeoIds() {
+    if (EXCLUDED_REGION_IDS.length === 0) return;
+    try {
+      const rows: { id: number }[] = await this.dataSource.query(`
+        WITH RECURSIVE excluded AS (
+          SELECT id FROM geo WHERE id = ANY($1::int[])
+          UNION ALL
+          SELECT g.id FROM geo g JOIN excluded e ON g.parent_id = e.id
+        )
+        SELECT id FROM excluded
+      `, [EXCLUDED_REGION_IDS]);
+      this.excludedGeoIds = new Set(rows.map(r => r.id));
+      this.logger.log(`Loaded ${this.excludedGeoIds.size} excluded geo IDs for regions: ${EXCLUDED_REGION_IDS.join(', ')}`);
+    } catch (err) {
+      this.logger.error(`Failed to load excluded geo IDs: ${err}`);
+    }
+  }
+
+  private getExcludedGeoFilter(paramIdx: number): { sql: string; param: number[] | null; nextIdx: number } {
+    if (this.excludedGeoIds.size === 0) return { sql: '', param: null, nextIdx: paramIdx };
+    return {
+      sql: `AND geo_id NOT IN (SELECT unnest($${paramIdx}::int[]))`,
+      param: Array.from(this.excludedGeoIds),
+      nextIdx: paramIdx + 1,
+    };
   }
 
   @Cron(process.env.EXPORT_CRON || '0 */30 * * *')
@@ -120,6 +153,77 @@ export class ExportService {
 
     this.logger.log(`Deactivation complete: ${archived} archived, ${errors} errors`);
     return { archived, errors };
+  }
+
+  /**
+   * Deactivate all exported objects belonging to a specific region (and all sub-geos).
+   * Sends deactivation to CRM and marks as 'deactivated' in local DB.
+   */
+  async deactivateByRegion(regionGeoId: number, batchSize = 200): Promise<{ total: number; deactivated: number; errors: number }> {
+    // Resolve all geo IDs in the region
+    const geoRows: { id: number }[] = await this.dataSource.query(`
+      WITH RECURSIVE region_geos AS (
+        SELECT id FROM geo WHERE id = $1
+        UNION ALL
+        SELECT g.id FROM geo g JOIN region_geos rg ON g.parent_id = rg.id
+      )
+      SELECT id FROM region_geos
+    `, [regionGeoId]);
+    const geoIds = geoRows.map(r => r.id);
+    this.logger.log(`DeactivateByRegion: ${geoIds.length} geo IDs in region ${regionGeoId}`);
+
+    // Find all exported objects in this region
+    const ids: { id: string }[] = await this.dataSource.query(`
+      SELECT id FROM unified_listings
+      WHERE export_status = 'exported'
+        AND crm_external_id IS NOT NULL
+        AND geo_id = ANY($1::int[])
+    `, [geoIds]);
+
+    this.logger.log(`DeactivateByRegion: ${ids.length} exported objects to deactivate`);
+    if (!ids.length) return { total: 0, deactivated: 0, errors: 0 };
+
+    let deactivated = 0;
+    let errors = 0;
+
+    for (let i = 0; i < ids.length; i += batchSize) {
+      const batch = ids.slice(i, i + batchSize);
+
+      for (const { id } of batch) {
+        if (this.stopRequested) break;
+        try {
+          const rows = await this.dataSource.query(`SELECT * FROM unified_listings WHERE id = $1`, [id]);
+          if (!rows.length) { errors++; continue; }
+          const listing = this.hydrate(rows[0]);
+
+          const dto = await this.toCrmMapper.map(listing);
+          (dto as any).deleted_at = new Date().toISOString();
+
+          const result = await this.crmClientService.importObject(dto);
+          if (result.success) {
+            await this.dataSource.query(
+              `UPDATE unified_listings SET export_status = 'deactivated' WHERE id = $1`, [id],
+            );
+            deactivated++;
+          } else {
+            this.logger.warn(`DeactivateByRegion failed: ${listing.sourceId}: ${result.error}`);
+            errors++;
+          }
+        } catch (err) {
+          this.logger.error(`DeactivateByRegion error: ${id}: ${err}`);
+          errors++;
+        }
+      }
+
+      this.runAllProgress = {
+        exported: deactivated, duplicates: 0, errors, skipped: 0,
+        elapsed: this.formatElapsed(Date.now() - Date.now()), batchNum: Math.floor(i / batchSize) + 1,
+      };
+      this.logger.log(`DeactivateByRegion progress: ${deactivated}/${ids.length} deactivated, ${errors} errors`);
+    }
+
+    this.logger.log(`DeactivateByRegion complete: ${deactivated} deactivated, ${errors} errors out of ${ids.length}`);
+    return { total: ids.length, deactivated, errors };
   }
 
   async runExport(opts?: { batchSize?: number; geoId?: number; realtyType?: string }): Promise<{
@@ -206,6 +310,14 @@ export class ExportService {
           paramIdx++;
         }
 
+        // Exclude regions (e.g. Odessa)
+        let excludeFilter = '';
+        if (this.excludedGeoIds.size > 0) {
+          excludeFilter = `AND geo_id NOT IN (SELECT unnest($${paramIdx}::int[]))`;
+          params.push(Array.from(this.excludedGeoIds));
+          paramIdx++;
+        }
+
         params.push(batchSize);
 
         const listings: Record<string, unknown>[] = await this.dataSource.query(
@@ -216,6 +328,7 @@ export class ExportService {
              AND deleted_at IS NULL
              AND price > 0 AND total_area > 0 AND geo_id IS NOT NULL
              ${platformFilter}
+             ${excludeFilter}
            ORDER BY published_at DESC NULLS LAST
            LIMIT $${paramIdx}`,
           params,
@@ -405,6 +518,14 @@ export class ExportService {
           paramIdx++;
         }
 
+        // Exclude regions (e.g. Odessa)
+        let excludeFilter = '';
+        if (this.excludedGeoIds.size > 0) {
+          excludeFilter = `AND geo_id NOT IN (SELECT unnest($${paramIdx}::int[]))`;
+          params.push(Array.from(this.excludedGeoIds));
+          paramIdx++;
+        }
+
         params.push(batchSize);
 
         const listings: Record<string, unknown>[] = await this.dataSource.query(
@@ -415,6 +536,7 @@ export class ExportService {
              AND deleted_at IS NULL
              AND price > 0 AND total_area > 0 AND geo_id IS NOT NULL
              ${platformFilter}
+             ${excludeFilter}
            ORDER BY published_at DESC NULLS LAST
            LIMIT $${paramIdx}`,
           params,
@@ -566,6 +688,14 @@ export class ExportService {
     }
 
     conditions.push(`price > 0 AND total_area > 0 AND geo_id IS NOT NULL`);
+
+    // Exclude regions (e.g. Odessa)
+    const geoFilter = this.getExcludedGeoFilter(paramIdx);
+    if (geoFilter.param) {
+      conditions.push(`geo_id NOT IN (SELECT unnest($${paramIdx}::int[]))`);
+      params.push(geoFilter.param);
+      paramIdx = geoFilter.nextIdx;
+    }
 
     params.push(limit);
     const limitParam = `$${paramIdx}`;

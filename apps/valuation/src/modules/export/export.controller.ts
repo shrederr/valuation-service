@@ -142,4 +142,12 @@ export class ExportController {
   async deactivate() {
     return this.exportService.deactivateDeletedObjects();
   }
+
+  @Post('deactivate-region/:geoId')
+  @ApiOperation({ summary: 'Deactivate all exported objects in a region (and sub-geos) from CRM' })
+  async deactivateRegion(@Param('geoId') geoId: string, @Body() body?: { batchSize?: number }) {
+    const promise = this.exportService.deactivateByRegion(Number(geoId), body?.batchSize || 200);
+    promise.catch((err) => console.error('deactivateByRegion error:', err));
+    return { started: true, regionGeoId: Number(geoId), message: `Deactivation by region started. Check GET /api/v1/export/progress for status.` };
+  }
 }
