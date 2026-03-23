@@ -3,8 +3,17 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UnifiedListing } from '@libs/database';
 
-import { BaseCriterion, CriterionResult, CriterionContext, LIQUIDITY_WEIGHTS, MEDIAN_DAYS_TO_SELL } from './base.criterion';
+import { BaseCriterion, CriterionResult, CriterionContext, LIQUIDITY_WEIGHTS, ExposureStats } from './base.criterion';
 
+/**
+ * Критерій 14 за ТЗ: Середній час експозиції на ринку (W=0.09)
+ *
+ * x = avg_days_on_market по сегменту (район + тип + кімнати + площа)
+ * "менше — краще": S = 10 × (xmax - x) / (xmax - xmin)
+ *
+ * Дані беруться з реальних знятих/проданих об'єктів:
+ * час експозиції = deleted_at - published_at
+ */
 @Injectable()
 export class ExposureTimeCriterion extends BaseCriterion {
   public readonly name = 'exposureTime';
@@ -18,144 +27,165 @@ export class ExposureTimeCriterion extends BaseCriterion {
   }
 
   public evaluate(context: CriterionContext): CriterionResult {
-    const { subject, fairPrice, exposureStats } = context;
+    const { exposureStats } = context;
 
-    if (!fairPrice || fairPrice.analogsCount === undefined || fairPrice.analogsCount === 0) {
-      return this.createNullResult('Немає аналогів для оцінки часу експозиції');
+    if (!exposureStats || exposureStats.count < 3) {
+      return this.createNullResult('Недостатньо даних по знятих об\'єктах для оцінки часу експозиції');
     }
 
-    const realtyType = subject.realtyType as keyof typeof MEDIAN_DAYS_TO_SELL;
-    const baseDays = MEDIAN_DAYS_TO_SELL[realtyType] || MEDIAN_DAYS_TO_SELL.default;
+    const { subjectDays, minDays, maxDays, count } = exposureStats;
 
-    // Если есть реальные данные из БД — используем их
-    if (exposureStats && exposureStats.count >= 10 && exposureStats.medianDays > 0) {
-      return this.evaluateWithRealData(subject, fairPrice, exposureStats.medianDays, baseDays);
+    // Якщо min == max — всі об'єкти з однаковим часом
+    if (minDays >= maxDays) {
+      return this.createResult(10, `Час експозиції в сегменті однаковий: ${Math.round(minDays)} днів (${count} об'єктів)`);
     }
 
-    // Fallback: оценка по вердикту fair price (0-10)
-    return this.evaluateByVerdict(fairPrice, baseDays);
+    // За ТЗ: S = 10 × (xmax - x) / (xmax - xmin), менше — краще
+    const score = 10 * (maxDays - subjectDays) / (maxDays - minDays);
+
+    const explanation = `Оцінка ${Math.round(subjectDays)} днів (мін ${Math.round(minDays)}, макс ${Math.round(maxDays)}, медіана ${Math.round(exposureStats.medianDays)} днів, ${count} об'єктів у сегменті)`;
+
+    return this.createResult(score, explanation);
   }
 
   /**
-   * Оценка на основе реальных данных экспозиции из БД.
-   * По ТЗ: S = 10 * (xmax - x) / (xmax - xmin) — швидший продаж = вищий бал, 0-10
+   * Розраховує статистику часу експозиції для сегменту об'єкта.
+   * Сегмент: район (geo_id) + тип нерухомості + кімнати + діапазон площі (±30%)
+   *
+   * Використовує знятих/проданих об'єктів (deleted_at IS NOT NULL)
+   * за останні 12 місяців.
    */
-  private evaluateWithRealData(
+  public async calculateExposureForSegment(
     subject: UnifiedListing,
-    fairPrice: { verdict: string },
-    realMedianDays: number,
-    baseDays: number,
-  ): CriterionResult {
-    let priceMultiplier = 1.0;
-    if (fairPrice.verdict === 'cheap') {
-      priceMultiplier = 0.6;
-    } else if (fairPrice.verdict === 'expensive') {
-      priceMultiplier = 1.5;
+  ): Promise<ExposureStats | null> {
+    const geoId = subject.geoId;
+    const realtyType = subject.realtyType;
+    const rooms = subject.rooms;
+    const totalArea = subject.totalArea;
+
+    // Крок 1: Точний сегмент (geo + тип + кімнати + площа ±30%)
+    let rows = await this.querySegment(geoId, realtyType, rooms, totalArea, 0.3);
+    if (rows && rows.length >= 5) {
+      return this.buildResult(rows, subject);
     }
 
-    const subjectEstimate = baseDays * priceMultiplier;
-    const ratio = subjectEstimate / realMedianDays;
-
-    // Шкала 0-10 на основе ratio
-    let score: number;
-    if (ratio <= 0.5) {
-      score = 10;
-    } else if (ratio <= 0.8) {
-      score = 8;
-    } else if (ratio <= 1.0) {
-      score = 6;
-    } else if (ratio <= 1.2) {
-      score = 4;
-    } else if (ratio <= 1.5) {
-      score = 2;
-    } else {
-      score = 0;
+    // Крок 2: Розширюємо площу до ±50%
+    rows = await this.querySegment(geoId, realtyType, rooms, totalArea, 0.5);
+    if (rows && rows.length >= 5) {
+      return this.buildResult(rows, subject);
     }
 
-    const estimatedDays = Math.round(subjectEstimate);
-    const explanation = `Оцінка ${estimatedDays} днів vs медіана ринку ${realMedianDays} днів`;
+    // Крок 3: Без фільтру кімнат
+    rows = await this.querySegment(geoId, realtyType, null, totalArea, 0.5);
+    if (rows && rows.length >= 5) {
+      return this.buildResult(rows, subject);
+    }
 
-    return this.createResult(score, explanation);
+    // Крок 4: Тільки geo + тип
+    rows = await this.querySegment(geoId, realtyType, null, null, null);
+    if (rows && rows.length >= 3) {
+      return this.buildResult(rows, subject);
+    }
+
+    // Крок 5: Тільки тип (без geo)
+    rows = await this.querySegment(null, realtyType, null, null, null);
+    if (rows && rows.length >= 3) {
+      return this.buildResult(rows, subject);
+    }
+
+    return null;
   }
 
-  /**
-   * Fallback: оценка по вердикту fair price (0-10).
-   */
-  private evaluateByVerdict(
-    fairPrice: { verdict: string },
-    medianDays: number,
-  ): CriterionResult {
-    let score: number;
-    let explanation: string;
-
-    if (fairPrice.verdict === 'cheap') {
-      score = 10;
-      explanation = `Об'єкт продасться швидше за медіанний час (${medianDays} днів) через низьку ціну`;
-    } else if (fairPrice.verdict === 'in_market') {
-      score = 5;
-      explanation = `Орієнтовний час продажу близький до медіанного (${medianDays} днів)`;
-    } else {
-      score = 0;
-      explanation = `Час продажу може значно перевищити медіанний (${medianDays} днів) через завищену ціну`;
-    }
-
-    return this.createResult(score, explanation);
-  }
-
-  /**
-   * Рассчитывает реальное среднее время экспозиции для аналогичных объектов.
-   * Вызывается из LiquidityService перед evaluate().
-   */
-  public async calculateAverageExposureTime(
-    geoId: number | null,
+  private async querySegment(
+    geoId: number | null | undefined,
     realtyType: string,
-  ): Promise<{ medianDays: number; avgDays: number; count: number } | null> {
-    const query = this.listingRepository
-      .createQueryBuilder('listing')
-      .select('listing.deleted_at - listing.published_at', 'exposure')
-      .where('listing.deletedAt IS NOT NULL')
-      .andWhere('listing.publishedAt IS NOT NULL')
-      .andWhere('listing.deletedAt > listing.publishedAt')
-      .andWhere('listing.realtyType = :realtyType', { realtyType });
+    rooms: number | null | undefined,
+    totalArea: number | null | undefined,
+    areaRange: number | null,
+  ): Promise<RawExposureData[] | null> {
+    const params: any[] = [realtyType];
+    let paramIdx = 2;
+
+    let sql = `
+      SELECT EXTRACT(EPOCH FROM (deleted_at - published_at)) / 86400.0 AS days
+      FROM unified_listings
+      WHERE deleted_at IS NOT NULL
+        AND published_at IS NOT NULL
+        AND deleted_at > published_at
+        AND realty_type = $1
+        AND deleted_at > NOW() - INTERVAL '12 months'
+    `;
 
     if (geoId) {
-      query.andWhere('listing.geoId = :geoId', { geoId });
+      sql += ` AND geo_id = $${paramIdx}`;
+      params.push(geoId);
+      paramIdx++;
     }
 
-    const results = await query.getRawMany();
-
-    if (results.length === 0) {
-      return null;
+    if (rooms != null) {
+      sql += ` AND rooms = $${paramIdx}`;
+      params.push(rooms);
+      paramIdx++;
     }
 
-    const exposureDays = results
-      .map((r) => {
-        const exposure = r.exposure;
-        if (!exposure) return null;
-        const days = exposure.days || 0;
-        const hours = exposure.hours || 0;
-        return days + hours / 24;
-      })
-      .filter((d): d is number => d !== null && d > 0)
-      .sort((a, b) => a - b);
-
-    if (exposureDays.length === 0) {
-      return null;
+    if (totalArea != null && areaRange != null) {
+      const minArea = totalArea * (1 - areaRange);
+      const maxArea = totalArea * (1 + areaRange);
+      sql += ` AND total_area BETWEEN $${paramIdx} AND $${paramIdx + 1}`;
+      params.push(minArea, maxArea);
+      paramIdx += 2;
     }
 
-    const sum = exposureDays.reduce((a, b) => a + b, 0);
-    const avgDays = Math.round(sum / exposureDays.length);
-    const medianIndex = Math.floor(exposureDays.length / 2);
-    const medianDays = Math.round(
-      exposureDays.length % 2 === 0
-        ? (exposureDays[medianIndex - 1] + exposureDays[medianIndex]) / 2
-        : exposureDays[medianIndex],
-    );
+    // Відсікаємо аномалії (менше 1 дня, більше 365 днів)
+    sql += ` AND EXTRACT(EPOCH FROM (deleted_at - published_at)) / 86400.0 BETWEEN 1 AND 365`;
 
-    return {
-      medianDays,
-      avgDays,
-      count: exposureDays.length,
-    };
+    const rows: { days: number }[] = await this.listingRepository.query(sql, params);
+
+    if (!rows || rows.length === 0) return null;
+    return rows.map(r => ({ days: Number(r.days) }));
   }
+
+  private buildResult(rows: RawExposureData[], subject: UnifiedListing): ExposureStats {
+    const sorted = rows.map(r => r.days).sort((a, b) => a - b);
+    const count = sorted.length;
+
+    // IQR фільтр для відсікання викидів
+    const q1Idx = Math.floor(count * 0.25);
+    const q3Idx = Math.floor(count * 0.75);
+    const q1 = sorted[q1Idx];
+    const q3 = sorted[q3Idx];
+    const iqr = q3 - q1;
+    const lowerBound = q1 - 1.5 * iqr;
+    const upperBound = q3 + 1.5 * iqr;
+
+    const filtered = sorted.filter(d => d >= lowerBound && d <= upperBound);
+    if (filtered.length < 3) {
+      // Якщо після фільтрації мало — використовуємо всі
+      return this.computeStats(sorted, subject);
+    }
+    return this.computeStats(filtered, subject);
+  }
+
+  private computeStats(sorted: number[], subject: UnifiedListing): ExposureStats {
+    const count = sorted.length;
+    const minDays = sorted[0];
+    const maxDays = sorted[count - 1];
+    const sum = sorted.reduce((a, b) => a + b, 0);
+    const avgDays = sum / count;
+
+    const medianIdx = Math.floor(count / 2);
+    const medianDays = count % 2 === 0
+      ? (sorted[medianIdx - 1] + sorted[medianIdx]) / 2
+      : sorted[medianIdx];
+
+    // Оцінка часу для поточного об'єкта = медіана сегменту
+    // (бо ми не знаємо реального часу — об'єкт ще на ринку)
+    const subjectDays = medianDays;
+
+    return { subjectDays, medianDays, avgDays, minDays, maxDays, count };
+  }
+}
+
+interface RawExposureData {
+  days: number;
 }

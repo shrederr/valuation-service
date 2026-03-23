@@ -11,7 +11,7 @@ import { StreetMatcherService } from '../osm/street-matcher.service';
 import { ExportStatsDto } from './dto';
 
 /** Geo IDs of regions excluded from export (Odessa region + all children resolved at startup) */
-const EXCLUDED_REGION_IDS = [18263]; // Одеська область top-level geo ID
+const EXCLUDED_REGION_IDS = [18263, 20479]; // Одеська та Львівська області
 
 @Injectable()
 export class ExportService {

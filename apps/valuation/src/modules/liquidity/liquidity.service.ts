@@ -21,7 +21,12 @@ import { FurnitureCriterion } from './criteria/furniture.criterion';
 import { CommunicationsCriterion } from './criteria/communications.criterion';
 import { UniqueFeaturesCriterion } from './criteria/unique-features.criterion';
 import { BuyConditionsCriterion } from './criteria/buy-conditions.criterion';
-import { CriterionResult, CriterionContext, ExposureStats, MEDIAN_DAYS_TO_SELL } from './criteria/base.criterion';
+import { CriterionResult, CriterionContext, ExposureStats } from './criteria/base.criterion';
+
+const MEDIAN_DAYS_TO_SELL: Record<string, number> = {
+  apartment: 30, house: 58, commercial: 51,
+  area: 68, room: 30, garage: 45, default: 45,
+};
 
 export interface LiquidityOptions {
   sourceType?: SourceType;
@@ -77,13 +82,10 @@ export class LiquidityService {
       this.logger.warn(`Could not calculate fair price for listing ${subject.id}`);
     }
 
-    // Получаем реальные данные по экспозиции
+    // Реальні дані часу експозиції по сегменту (район + тип + кімнати + площа)
     let exposureStats: ExposureStats | null = null;
     try {
-      exposureStats = await this.exposureTimeCriterion.calculateAverageExposureTime(
-        subject.geoId ?? null,
-        subject.realtyType,
-      );
+      exposureStats = await this.exposureTimeCriterion.calculateExposureForSegment(subject);
     } catch {
       this.logger.warn(`Could not calculate exposure stats for listing ${subject.id}`);
     }

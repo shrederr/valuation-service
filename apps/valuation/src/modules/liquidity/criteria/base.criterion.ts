@@ -10,8 +10,11 @@ export interface CriterionResult {
 }
 
 export interface ExposureStats {
+  subjectDays: number;
   medianDays: number;
   avgDays: number;
+  minDays: number;
+  maxDays: number;
   count: number;
 }
 
@@ -74,13 +77,3 @@ export const LIQUIDITY_WEIGHTS = {
   livingArea: 0.03,       // Жила площа (більша площа = вищий бал, min-max)
 };
 
-// Медианное время продажи по типам (из реальных данных)
-export const MEDIAN_DAYS_TO_SELL = {
-  apartment: 30,
-  house: 58,
-  commercial: 51,
-  area: 68,
-  room: 30,
-  garage: 45,
-  default: 45,
-};
