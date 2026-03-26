@@ -78,6 +78,16 @@ export class PrimaryDataExtractor {
       if (Array.isArray(value) && value.length > 0) {
         return value.map(String);
       }
+      // DomRia: photos is an object { "318499720": "dom/photo/...", ... } — extract values
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        const urls = Object.values(value).filter(v => typeof v === 'string' && v.length > 5);
+        if (urls.length > 0) {
+          // DomRia photo paths need CDN prefix
+          return (urls as string[]).map(u =>
+            u.startsWith('http') ? u : `https://cdn.riastatic.com/photosnew/${u}`,
+          );
+        }
+      }
     }
     return null;
   }

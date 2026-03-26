@@ -222,6 +222,12 @@ export class PhotoDedupService {
       `SELECT * FROM unified_listings WHERE id = $1`,
       [id],
     );
-    return rows.length > 0 ? rows[0] : null;
+    if (rows.length === 0) return null;
+    const raw = rows[0];
+    // Map snake_case DB columns to camelCase properties
+    if (raw.primary_data && !raw.primaryData) {
+      raw.primaryData = raw.primary_data;
+    }
+    return raw;
   }
 }
