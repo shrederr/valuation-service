@@ -1454,9 +1454,7 @@ export class ExportService {
 
     // Step 1: Get a pool of active aggregator objects with coordinates (lightweight query)
     const pool = await this.dataSource.query(`
-      SELECT a.id, a.source_id, a.realty_platform, a.geo_id, a.price, a.total_area,
-             a.land_area, a.rooms, a.realty_type, a.lat, a.lng, a.external_url,
-             g.name::text as geo_name
+      SELECT a.*, g.name::text as geo_name
       FROM unified_listings a
       LEFT JOIN geo g ON g.id = a.geo_id
       WHERE a.source_type = 'aggregator'
