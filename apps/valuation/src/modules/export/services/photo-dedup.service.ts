@@ -86,6 +86,11 @@ export class PhotoDedupService {
     const photosA = this.extractPhotos(listingA);
     const photosB = this.extractPhotos(listingB);
 
+    this.logger.debug(
+      `Photo extract: A(${listingA.sourceId}) pd=${!!(listingA as any).primaryData} attrs=${!!listingA.attributes} → ${photosA?.length || 0} photos, ` +
+      `B(${listingB.sourceId}) pd=${!!(listingB as any).primaryData} attrs=${!!listingB.attributes} → ${photosB?.length || 0} photos`,
+    );
+
     if (!photosA || photosA.length < 2) {
       return { verdict: 'ERROR', confidence: 0, reasoning: `Listing A has insufficient photos (${photosA?.length || 0})` };
     }
