@@ -3,9 +3,14 @@ import { DataSource } from 'typeorm';
 import { UnifiedListing } from '@libs/database';
 import { PrimaryDataExtractor } from './primary-data-extractor';
 import { EmbeddingService } from './embedding.service';
+import { PhotoDedupService, PhotoCompareResult } from './photo-dedup.service';
 
 const TEXT_SIM = 0.92;
 const PRICE_DELTA = 0.05;
+const RELAXED_PRICE_DELTA = 0.15;
+const RELAXED_AREA_DELTA = 0.10;
+const RELAXED_GEO_RADIUS = 100; // meters
+const PHOTO_CONFIDENCE_THRESHOLD = 0.7;
 
 /**
  * Source filter for dedup: match against CRM objects AND already-exported aggregator objects.
@@ -35,8 +40,10 @@ const REALTY_TYPE_ATTR_KEYS: Record<string, string[]> = {
 export interface DedupResult {
   isDuplicate: boolean;
   matchedId?: string;
-  matchLevel?: 'address' | 'phone' | 'geo' | 'text';
+  matchLevel?: 'address' | 'phone' | 'geo' | 'text' | 'photo';
   similarity?: number;
+  photoVerdict?: 'SAME' | 'DIFFERENT' | 'UNCERTAIN' | 'ERROR';
+  pendingPhotoCheck?: boolean;
 }
 
 @Injectable()
@@ -47,6 +54,7 @@ export class DedupCheckService {
     private readonly dataSource: DataSource,
     private readonly primaryDataExtractor: PrimaryDataExtractor,
     private readonly embeddingService: EmbeddingService,
+    private readonly photoDedupService: PhotoDedupService,
   ) {}
 
   async isDuplicate(listing: UnifiedListing): Promise<DedupResult> {
@@ -63,6 +71,35 @@ export class DedupCheckService {
     const geoMatch = await this.checkByGeoProximity(listing);
     if (geoMatch) {
       return { isDuplicate: true, matchedId: geoMatch, matchLevel: 'geo' };
+    }
+
+    // Level 3.5: Relaxed geo proximity + GPT-4o photo confirmation
+    if (this.photoDedupService.isEnabled()) {
+      const relaxedCandidates = await this.checkByGeoProximityRelaxed(listing);
+      if (relaxedCandidates && relaxedCandidates.length > 0) {
+        for (const candidateId of relaxedCandidates) {
+          const photoResult = await this.confirmWithPhotos(listing, candidateId);
+          if (photoResult.verdict === 'SAME' && photoResult.confidence >= PHOTO_CONFIDENCE_THRESHOLD) {
+            return {
+              isDuplicate: true,
+              matchedId: candidateId,
+              matchLevel: 'photo',
+              photoVerdict: 'SAME',
+              similarity: photoResult.confidence,
+            };
+          }
+          if (photoResult.verdict === 'DIFFERENT' && photoResult.confidence >= PHOTO_CONFIDENCE_THRESHOLD) {
+            continue; // not a duplicate, check next candidate
+          }
+          // UNCERTAIN or ERROR — can't determine, block export for manual review
+          return {
+            isDuplicate: false,
+            pendingPhotoCheck: true,
+            matchedId: candidateId,
+            photoVerdict: photoResult.verdict,
+          };
+        }
+      }
     }
 
     const textMatch = await this.checkByEmbeddingSimilarity(listing);
@@ -219,6 +256,71 @@ export class DedupCheckService {
     }
 
     return null;
+  }
+
+  /**
+   * Level 3.5a: Relaxed geo proximity — wider thresholds to find suspicious candidates.
+   * 100m radius, ±15% price, ±10% area, no exact floor/total_floors match.
+   * Returns up to 3 candidate IDs for photo verification.
+   */
+  private async checkByGeoProximityRelaxed(listing: UnifiedListing): Promise<string[] | null> {
+    if (!listing.lat || !listing.lng) return null;
+    if (!listing.totalArea && !listing.landArea) return null;
+
+    const areaColumn = listing.totalArea ? 'total_area' : 'land_area';
+    const areaValue = listing.totalArea || listing.landArea;
+
+    const result = await this.dataSource.query(
+      `SELECT id FROM unified_listings
+       WHERE ${DEDUP_SOURCE_FILTER}
+         AND ${DEDUP_ACTIVE_FILTER}
+         AND id != $1
+         AND realty_type = $2
+         AND lat IS NOT NULL AND lng IS NOT NULL
+         AND ST_DWithin(
+           geography(ST_SetSRID(ST_MakePoint(lng::float8, lat::float8), 4326)),
+           geography(ST_SetSRID(ST_MakePoint($3::float8, $4::float8), 4326)),
+           ${RELAXED_GEO_RADIUS}
+         )
+         AND ($5::int IS NULL OR rooms = $5)
+         AND price > 0 AND $6::numeric > 0
+         AND ABS(price - $6) / NULLIF(GREATEST(price, $6), 0) <= ${RELAXED_PRICE_DELTA}
+         AND ${areaColumn} IS NOT NULL AND $7::numeric > 0
+         AND ABS(${areaColumn} - $7) / NULLIF(GREATEST(${areaColumn}, $7), 0) <= ${RELAXED_AREA_DELTA}
+       LIMIT 3`,
+      [
+        listing.id,
+        listing.realtyType,
+        listing.lng,
+        listing.lat,
+        listing.rooms ?? null,
+        listing.price ?? 0,
+        areaValue ?? 0,
+      ],
+    );
+
+    if (result.length === 0) return null;
+    return result.map((r: { id: string }) => r.id);
+  }
+
+  /**
+   * Level 3.5b: Confirm a suspected duplicate by comparing photos via GPT-4o Vision.
+   */
+  private async confirmWithPhotos(
+    listing: UnifiedListing,
+    candidateId: string,
+  ): Promise<PhotoCompareResult> {
+    try {
+      const candidate = await this.photoDedupService.loadListing(candidateId);
+      if (!candidate) {
+        return { verdict: 'ERROR', confidence: 0, reasoning: `Candidate ${candidateId} not found` };
+      }
+      return await this.photoDedupService.compare(listing, candidate);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Photo confirmation failed for ${candidateId}: ${msg}`);
+      return { verdict: 'ERROR', confidence: 0, reasoning: msg };
+    }
   }
 
   /**

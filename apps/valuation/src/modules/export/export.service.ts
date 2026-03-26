@@ -5,6 +5,8 @@ import { DataSource } from 'typeorm';
 import { UnifiedListing } from '@libs/database';
 import { DedupCheckService } from './services/dedup-check.service';
 import { TranslationService } from './services/translation.service';
+import { PhotoDedupService } from './services/photo-dedup.service';
+import { PrimaryDataExtractor } from './services/primary-data-extractor';
 import { ToCrmMapper } from './mappers/to-crm.mapper';
 import { CrmClientService } from './services/crm-client.service';
 import { StreetMatcherService } from '../osm/street-matcher.service';
@@ -37,6 +39,8 @@ export class ExportService {
     private readonly streetMatcherService: StreetMatcherService,
     private readonly toCrmMapper: ToCrmMapper,
     private readonly crmClientService: CrmClientService,
+    private readonly photoDedupService: PhotoDedupService,
+    private readonly primaryDataExtractor: PrimaryDataExtractor,
   ) {
     this.batchSize = parseInt(this.configService.get('EXPORT_BATCH_SIZE', '500'), 10);
     this.concurrency = parseInt(this.configService.get('EXPORT_CONCURRENCY', '5'), 10);
@@ -1435,5 +1439,158 @@ export class ExportService {
       crmExternalId: raw.crm_external_id,
     });
     return listing;
+  }
+
+  /**
+   * Test photo dedup on N objects: find relaxed geo candidates and compare via GPT-4o.
+   * Returns detailed results for manual quality review.
+   */
+  async photoDedupTest(limit = 100): Promise<{
+    total: number;
+    results: Array<Record<string, unknown>>;
+    stats: { same: number; different: number; uncertain: number; error: number; totalCostUsd: string; avgTimeMs: number };
+  }> {
+    this.logger.log(`PhotoDedupTest: starting test with limit=${limit}`);
+
+    // Find aggregator objects that have relaxed geo candidates (potential duplicates)
+    const candidates = await this.dataSource.query(`
+      SELECT a.id, a.source_id, a.realty_platform, a.geo_id, a.price, a.total_area,
+             a.land_area, a.rooms, a.realty_type, a.lat, a.lng, a.external_url,
+             g.name::text as geo_name
+      FROM unified_listings a
+      LEFT JOIN geo g ON g.id = a.geo_id
+      WHERE a.source_type = 'aggregator'
+        AND a.is_active = true
+        AND a.lat IS NOT NULL AND a.lng IS NOT NULL
+        AND (a.total_area IS NOT NULL OR a.land_area IS NOT NULL)
+        AND a.price > 0
+        AND EXISTS (
+          SELECT 1 FROM unified_listings b
+          WHERE b.id != a.id
+            AND (b.source_type IN ('vector', 'vector_crm') OR (b.source_type = 'aggregator' AND b.export_status = 'exported'))
+            AND (b.is_active = true OR b.source_type IN ('vector', 'vector_crm'))
+            AND b.realty_type = a.realty_type
+            AND b.lat IS NOT NULL AND b.lng IS NOT NULL
+            AND ST_DWithin(
+              geography(ST_SetSRID(ST_MakePoint(b.lng::float8, b.lat::float8), 4326)),
+              geography(ST_SetSRID(ST_MakePoint(a.lng::float8, a.lat::float8), 4326)),
+              100
+            )
+            AND (a.rooms IS NULL OR b.rooms = a.rooms)
+            AND b.price > 0
+            AND ABS(b.price - a.price) / NULLIF(GREATEST(b.price, a.price), 0) <= 0.15
+            AND (
+              (a.total_area IS NOT NULL AND b.total_area IS NOT NULL AND
+               ABS(b.total_area - a.total_area) / NULLIF(GREATEST(b.total_area, a.total_area), 0) <= 0.10)
+              OR
+              (a.land_area IS NOT NULL AND b.land_area IS NOT NULL AND
+               ABS(b.land_area - a.land_area) / NULLIF(GREATEST(b.land_area, a.land_area), 0) <= 0.10)
+            )
+        )
+      ORDER BY random()
+      LIMIT $1
+    `, [limit]);
+
+    this.logger.log(`PhotoDedupTest: found ${candidates.length} objects with relaxed geo candidates`);
+
+    const results: Array<Record<string, unknown>> = [];
+    const stats = { same: 0, different: 0, uncertain: 0, error: 0, totalTimeMs: 0 };
+
+    for (let i = 0; i < candidates.length; i++) {
+      const raw = candidates[i];
+      const listing = this.hydrate(raw);
+
+      // Find the relaxed geo candidate
+      const candidateRows = await this.dataSource.query(`
+        SELECT b.id, b.source_id, b.source_type, b.crm_external_id, b.realty_platform,
+               b.price, b.total_area, b.land_area, b.rooms, b.lat, b.lng, b.external_url,
+               ST_Distance(
+                 geography(ST_SetSRID(ST_MakePoint(b.lng::float8, b.lat::float8), 4326)),
+                 geography(ST_SetSRID(ST_MakePoint($2::float8, $3::float8), 4326))
+               ) as distance_m
+        FROM unified_listings b
+        WHERE b.id != $1
+          AND (b.source_type IN ('vector', 'vector_crm') OR (b.source_type = 'aggregator' AND b.export_status = 'exported'))
+          AND (b.is_active = true OR b.source_type IN ('vector', 'vector_crm'))
+          AND b.realty_type = $4
+          AND b.lat IS NOT NULL AND b.lng IS NOT NULL
+          AND ST_DWithin(
+            geography(ST_SetSRID(ST_MakePoint(b.lng::float8, b.lat::float8), 4326)),
+            geography(ST_SetSRID(ST_MakePoint($2::float8, $3::float8), 4326)),
+            100
+          )
+          AND ($5::int IS NULL OR b.rooms = $5)
+          AND b.price > 0 AND $6::numeric > 0
+          AND ABS(b.price - $6) / NULLIF(GREATEST(b.price, $6), 0) <= 0.15
+        ORDER BY distance_m
+        LIMIT 1
+      `, [listing.id, listing.lng, listing.lat, listing.realtyType, listing.rooms ?? null, listing.price ?? 0]);
+
+      if (candidateRows.length === 0) continue;
+
+      const cand = candidateRows[0];
+      const candidateListing = await this.photoDedupService.loadListing(cand.id);
+      if (!candidateListing) continue;
+
+      // Extract photos for logging
+      const listingData = this.primaryDataExtractor.extractForExport(listing);
+      const candidateData = this.primaryDataExtractor.extractForExport(candidateListing);
+
+      const startTime = Date.now();
+      const photoResult = await this.photoDedupService.compare(listing, candidateListing);
+      const elapsed = Date.now() - startTime;
+      stats.totalTimeMs += elapsed;
+
+      if (photoResult.verdict === 'SAME') stats.same++;
+      else if (photoResult.verdict === 'DIFFERENT') stats.different++;
+      else if (photoResult.verdict === 'UNCERTAIN') stats.uncertain++;
+      else stats.error++;
+
+      results.push({
+        index: i + 1,
+        listingId: listing.id,
+        sourceId: raw.source_id,
+        platform: raw.realty_platform,
+        candidateId: cand.id,
+        candidateCrmId: cand.crm_external_id,
+        candidateSource: cand.source_type,
+        candidatePlatform: cand.realty_platform,
+        verdict: photoResult.verdict,
+        confidence: photoResult.confidence,
+        reasoning: photoResult.reasoning,
+        listingPhotos: (listingData.photos || []).slice(0, 4),
+        candidatePhotos: (candidateData.photos || []).slice(0, 4),
+        listingUrl: listingData.url,
+        candidateUrl: candidateData.url,
+        geo: raw.geo_name,
+        area: raw.total_area,
+        price: raw.price,
+        candidateArea: cand.total_area,
+        candidatePrice: cand.price,
+        distance_m: Math.round(parseFloat(cand.distance_m)),
+        timeMs: elapsed,
+      });
+
+      this.logger.log(
+        `PhotoDedupTest [${i + 1}/${candidates.length}]: ${raw.source_id} vs ${cand.crm_external_id || cand.source_id} ` +
+        `→ ${photoResult.verdict} (${photoResult.confidence.toFixed(2)}) ${elapsed}ms`,
+      );
+    }
+
+    const totalProcessed = stats.same + stats.different + stats.uncertain + stats.error;
+    const costPerCall = 0.003;
+
+    return {
+      total: results.length,
+      results,
+      stats: {
+        same: stats.same,
+        different: stats.different,
+        uncertain: stats.uncertain,
+        error: stats.error,
+        totalCostUsd: `$${(totalProcessed * costPerCall).toFixed(2)}`,
+        avgTimeMs: totalProcessed > 0 ? Math.round(stats.totalTimeMs / totalProcessed) : 0,
+      },
+    };
   }
 }

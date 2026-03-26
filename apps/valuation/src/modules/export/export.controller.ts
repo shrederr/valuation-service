@@ -143,6 +143,13 @@ export class ExportController {
     return this.exportService.deactivateDeletedObjects();
   }
 
+  @Post('photo-dedup-test')
+  @ApiOperation({ summary: 'Test photo dedup on N objects: find relaxed geo candidates and compare photos via GPT-4o. Returns detailed results for manual review.' })
+  async photoDedupTest(@Body() body?: { limit?: number }) {
+    const limit = body?.limit || 100;
+    return this.exportService.photoDedupTest(limit);
+  }
+
   @Post('deactivate-region/:geoId')
   @ApiOperation({ summary: 'Deactivate all exported objects in a region (and sub-geos) from CRM' })
   async deactivateRegion(@Param('geoId') geoId: string, @Body() body?: { batchSize?: number }) {

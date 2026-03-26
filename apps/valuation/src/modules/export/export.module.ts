@@ -8,6 +8,7 @@ import { EmbeddingService } from './services/embedding.service';
 import { CrmClientService } from './services/crm-client.service';
 import { PrimaryDataExtractor } from './services/primary-data-extractor';
 import { TranslationService } from './services/translation.service';
+import { PhotoDedupService } from './services/photo-dedup.service';
 import { ToCrmMapper } from './mappers/to-crm.mapper';
 import { OsmModule } from '../osm/osm.module';
 
@@ -25,6 +26,7 @@ import { OsmModule } from '../osm/osm.module';
     CrmClientService,
     PrimaryDataExtractor,
     TranslationService,
+    PhotoDedupService,
     ToCrmMapper,
   ],
   exports: [ExportService, DedupCheckService],
