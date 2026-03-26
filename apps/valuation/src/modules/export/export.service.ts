@@ -1452,8 +1452,8 @@ export class ExportService {
   }> {
     this.logger.log(`PhotoDedupTest: starting test with limit=${limit}`);
 
-    // Find aggregator objects that have relaxed geo candidates (potential duplicates)
-    const candidates = await this.dataSource.query(`
+    // Step 1: Get a pool of active aggregator objects with coordinates (lightweight query)
+    const pool = await this.dataSource.query(`
       SELECT a.id, a.source_id, a.realty_platform, a.geo_id, a.price, a.total_area,
              a.land_area, a.rooms, a.realty_type, a.lat, a.lng, a.external_url,
              g.name::text as geo_name
@@ -1464,32 +1464,35 @@ export class ExportService {
         AND a.lat IS NOT NULL AND a.lng IS NOT NULL
         AND (a.total_area IS NOT NULL OR a.land_area IS NOT NULL)
         AND a.price > 0
-        AND EXISTS (
-          SELECT 1 FROM unified_listings b
-          WHERE b.id != a.id
-            AND (b.source_type IN ('vector', 'vector_crm') OR (b.source_type = 'aggregator' AND b.export_status = 'exported'))
-            AND (b.is_active = true OR b.source_type IN ('vector', 'vector_crm'))
-            AND b.realty_type = a.realty_type
-            AND b.lat IS NOT NULL AND b.lng IS NOT NULL
-            AND ST_DWithin(
-              geography(ST_SetSRID(ST_MakePoint(b.lng::float8, b.lat::float8), 4326)),
-              geography(ST_SetSRID(ST_MakePoint(a.lng::float8, a.lat::float8), 4326)),
-              100
-            )
-            AND (a.rooms IS NULL OR b.rooms = a.rooms)
-            AND b.price > 0
-            AND ABS(b.price - a.price) / NULLIF(GREATEST(b.price, a.price), 0) <= 0.15
-            AND (
-              (a.total_area IS NOT NULL AND b.total_area IS NOT NULL AND
-               ABS(b.total_area - a.total_area) / NULLIF(GREATEST(b.total_area, a.total_area), 0) <= 0.10)
-              OR
-              (a.land_area IS NOT NULL AND b.land_area IS NOT NULL AND
-               ABS(b.land_area - a.land_area) / NULLIF(GREATEST(b.land_area, a.land_area), 0) <= 0.10)
-            )
-        )
       ORDER BY random()
       LIMIT $1
-    `, [limit]);
+    `, [limit * 5]); // fetch 5x more since many won't have geo candidates
+
+    this.logger.log(`PhotoDedupTest: fetched ${pool.length} candidate objects from pool`);
+
+    // Step 2: For each, check if there are relaxed geo candidates (one at a time, fast)
+    const candidates: typeof pool = [];
+    for (const raw of pool) {
+      if (candidates.length >= limit) break;
+      const hasCand = await this.dataSource.query(`
+        SELECT 1 FROM unified_listings b
+        WHERE b.id != $1
+          AND (b.source_type IN ('vector', 'vector_crm') OR (b.source_type = 'aggregator' AND b.export_status = 'exported'))
+          AND (b.is_active = true OR b.source_type IN ('vector', 'vector_crm'))
+          AND b.realty_type = $2
+          AND b.lat IS NOT NULL AND b.lng IS NOT NULL
+          AND ST_DWithin(
+            geography(ST_SetSRID(ST_MakePoint(b.lng::float8, b.lat::float8), 4326)),
+            geography(ST_SetSRID(ST_MakePoint($3::float8, $4::float8), 4326)),
+            100
+          )
+          AND ($5::int IS NULL OR b.rooms = $5)
+          AND b.price > 0 AND $6::numeric > 0
+          AND ABS(b.price - $6) / NULLIF(GREATEST(b.price, $6), 0) <= 0.15
+        LIMIT 1
+      `, [raw.id, raw.realty_type, raw.lng, raw.lat, raw.rooms, raw.price]);
+      if (hasCand.length > 0) candidates.push(raw);
+    }
 
     this.logger.log(`PhotoDedupTest: found ${candidates.length} objects with relaxed geo candidates`);
 
