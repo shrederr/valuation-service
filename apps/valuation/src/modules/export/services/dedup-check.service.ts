@@ -73,34 +73,10 @@ export class DedupCheckService {
       return { isDuplicate: true, matchedId: geoMatch, matchLevel: 'geo' };
     }
 
-    // Level 3.5: Relaxed geo proximity + GPT-4o photo confirmation
-    if (this.photoDedupService.isEnabled()) {
-      const relaxedCandidates = await this.checkByGeoProximityRelaxed(listing);
-      if (relaxedCandidates && relaxedCandidates.length > 0) {
-        for (const candidateId of relaxedCandidates) {
-          const photoResult = await this.confirmWithPhotos(listing, candidateId);
-          if (photoResult.verdict === 'SAME' && photoResult.confidence >= PHOTO_CONFIDENCE_THRESHOLD) {
-            return {
-              isDuplicate: true,
-              matchedId: candidateId,
-              matchLevel: 'photo',
-              photoVerdict: 'SAME',
-              similarity: photoResult.confidence,
-            };
-          }
-          if (photoResult.verdict === 'DIFFERENT' && photoResult.confidence >= PHOTO_CONFIDENCE_THRESHOLD) {
-            continue; // not a duplicate, check next candidate
-          }
-          // UNCERTAIN or ERROR — can't determine, block export for manual review
-          return {
-            isDuplicate: false,
-            pendingPhotoCheck: true,
-            matchedId: candidateId,
-            photoVerdict: photoResult.verdict,
-          };
-        }
-      }
-    }
+    // Level 3.5: Relaxed geo + GPT-4o photo confirmation
+    // DISABLED in main pipeline — only available via POST /export/photo-dedup-test
+    // Will be enabled after manual quality review of test results
+    // if (this.photoDedupService.isEnabled()) { ... }
 
     const textMatch = await this.checkByEmbeddingSimilarity(listing);
     if (textMatch) {
