@@ -82,6 +82,16 @@ export class Vector2PropertyMapper {
     // Build enriched attributes for storage
     const enrichedAttributes = this.buildEnrichedAttributes(attrs);
 
+    // Extract photo URLs from CRM images field: [{url, showOnSite}, ...]
+    if (row.images && Array.isArray(row.images)) {
+      const photoUrls = (row.images as Array<{ url?: string; showOnSite?: boolean }>)
+        .filter(img => img?.url && typeof img.url === 'string')
+        .map(img => img.url as string);
+      if (photoUrls.length > 0) {
+        enrichedAttributes.images = photoUrls;
+      }
+    }
+
     // Infrastructure — passthrough (format is identical)
     const infrastructure = row.nearest_infrastructure || undefined;
 
