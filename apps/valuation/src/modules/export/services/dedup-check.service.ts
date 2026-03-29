@@ -2,10 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { UnifiedListing } from '@libs/database';
 import { PrimaryDataExtractor } from './primary-data-extractor';
-import { EmbeddingService } from './embedding.service';
 import { PhotoDedupService, PhotoCompareResult } from './photo-dedup.service';
 
-const TEXT_SIM = 0.92;
 const PRICE_DELTA = 0.05;
 const RELAXED_PRICE_DELTA = 0.15;
 const RELAXED_AREA_DELTA = 0.10;
@@ -40,7 +38,7 @@ const REALTY_TYPE_ATTR_KEYS: Record<string, string[]> = {
 export interface DedupResult {
   isDuplicate: boolean;
   matchedId?: string;
-  matchLevel?: 'address' | 'phone' | 'geo' | 'text' | 'photo';
+  matchLevel?: 'address' | 'geo' | 'text' | 'photo';
   similarity?: number;
   photoVerdict?: 'SAME' | 'DIFFERENT' | 'UNCERTAIN' | 'ERROR';
   pendingPhotoCheck?: boolean;
@@ -53,37 +51,73 @@ export class DedupCheckService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly primaryDataExtractor: PrimaryDataExtractor,
-    private readonly embeddingService: EmbeddingService,
     private readonly photoDedupService: PhotoDedupService,
   ) {}
 
   async isDuplicate(listing: UnifiedListing): Promise<DedupResult> {
+    // Level 1: Exact address match
     const addressMatch = await this.checkByAddress(listing);
     if (addressMatch) {
       return { isDuplicate: true, matchedId: addressMatch, matchLevel: 'address' };
     }
 
-    const phoneMatch = await this.checkByPhone(listing);
-    if (phoneMatch) {
-      return { isDuplicate: true, matchedId: phoneMatch, matchLevel: 'phone' };
-    }
-
+    // Level 2: Geo proximity 50m + exact attributes
     const geoMatch = await this.checkByGeoProximity(listing);
     if (geoMatch) {
       return { isDuplicate: true, matchedId: geoMatch, matchLevel: 'geo' };
     }
 
-    // Level 3.5: Relaxed geo + GPT-4o photo confirmation
-    // DISABLED in main pipeline — only available via POST /export/photo-dedup-test
-    // Will be enabled after manual quality review of test results
-    // if (this.photoDedupService.isEnabled()) { ... }
-
-    const textMatch = await this.checkByEmbeddingSimilarity(listing);
-    if (textMatch) {
-      return { isDuplicate: true, matchedId: textMatch.id, matchLevel: 'text', similarity: textMatch.similarity };
+    // Level 3: Relaxed geo (100m) + photo confirmation via GPT-4o
+    if (this.photoDedupService.isEnabled()) {
+      const photoResult = await this.checkByPhotoDedup(listing);
+      if (photoResult) return photoResult;
     }
 
     return { isDuplicate: false };
+  }
+
+  /**
+   * Level 3: Relaxed geo proximity + GPT-4o Vision photo comparison.
+   * Finds suspicious neighbors (100m, ±15% price, ±10% area),
+   * then confirms by comparing photos.
+   */
+  private async checkByPhotoDedup(listing: UnifiedListing): Promise<DedupResult | null> {
+    // Check if listing has photos — if not, mark as no_photos (don't export)
+    const listingPhotos = this.extractPhotoUrls(listing);
+    if (!listingPhotos || listingPhotos.length === 0) {
+      return {
+        isDuplicate: true,
+        matchLevel: 'photo',
+        photoVerdict: 'ERROR',
+        pendingPhotoCheck: false,
+      };
+    }
+
+    const candidates = await this.checkByGeoProximityRelaxed(listing);
+    if (!candidates || candidates.length === 0) return null;
+
+    for (const candidateId of candidates) {
+      const result = await this.confirmWithPhotos(listing, candidateId);
+      if (result.verdict === 'SAME' && result.confidence >= PHOTO_CONFIDENCE_THRESHOLD) {
+        return {
+          isDuplicate: true,
+          matchedId: candidateId,
+          matchLevel: 'photo',
+          similarity: result.confidence,
+          photoVerdict: 'SAME',
+        };
+      }
+    }
+
+    return null;
+  }
+
+  /** Extract photo URLs from listing attributes/primaryData */
+  private extractPhotoUrls(listing: UnifiedListing): string[] | null {
+    const data = this.primaryDataExtractor.extractForExport(listing);
+    return data.photos?.filter(url =>
+      typeof url === 'string' && url.startsWith('http') && url.length > 10,
+    ) || null;
   }
 
   /** Level 1: Exact match by address + params + price (±10%) */
@@ -109,25 +143,6 @@ export class DedupCheckService {
         listing.totalArea ?? null,
         listing.price ?? null,
       ],
-    );
-
-    return result.length > 0 ? result[0].id : null;
-  }
-
-  /** Level 2: Match by normalized phone number */
-  private async checkByPhone(listing: UnifiedListing): Promise<string | null> {
-    const phone = listing.normalizedPhone || this.primaryDataExtractor.extractNormalizedPhone(listing);
-    if (!phone) return null;
-
-    const result = await this.dataSource.query(
-      `SELECT id FROM unified_listings
-       WHERE ${DEDUP_SOURCE_FILTER}
-         AND ${DEDUP_ACTIVE_FILTER}
-         AND id != $1
-         AND normalized_phone = $2
-         AND realty_type = $3
-       LIMIT 1`,
-      [listing.id, phone, listing.realtyType],
     );
 
     return result.length > 0 ? result[0].id : null;
@@ -180,58 +195,6 @@ export class DedupCheckService {
     );
 
     return result.length > 0 ? result[0].id : null;
-  }
-
-  /**
-   * Level 4: Semantic embedding similarity (pgvector + HNSW) + exact attributes
-   *
-   * Following api_realty_comparison: first filter by exact attributes (term match),
-   * then rank by cosine similarity >= 0.92.
-   */
-  private async checkByEmbeddingSimilarity(
-    listing: UnifiedListing,
-  ): Promise<{ id: string; similarity: number } | null> {
-    if (!this.embeddingService.isReady()) return null;
-
-    const description = this.primaryDataExtractor.extractForExport(listing).description;
-    if (!description || description.length < 30) return null;
-    if (!listing.geoId) return null;
-
-    const attrKeys = REALTY_TYPE_ATTR_KEYS[listing.realtyType] || [];
-    const attrConditions = this.buildAttrConditions(listing, attrKeys, 5);
-
-    try {
-      const queryEmbedding = await this.embeddingService.embed(description);
-      const vectorStr = `[${queryEmbedding.join(',')}]`;
-
-      const result = await this.dataSource.query(
-        `SELECT id, 1 - (embedding <=> $1::vector) AS similarity
-         FROM unified_listings
-         WHERE ${DEDUP_SOURCE_FILTER}
-           AND ${DEDUP_ACTIVE_FILTER}
-           AND id != $2
-           AND realty_type = $3
-           AND geo_id = $4
-           AND embedding IS NOT NULL
-           ${attrConditions.sql}
-         ORDER BY embedding <=> $1::vector
-         LIMIT 1`,
-        [vectorStr, listing.id, listing.realtyType, listing.geoId, ...attrConditions.params],
-      );
-
-      if (result.length > 0) {
-        const similarity = parseFloat(result[0].similarity);
-        if (similarity >= TEXT_SIM) {
-          return { id: result[0].id, similarity };
-        }
-      }
-    } catch (error) {
-      this.logger.warn(
-        `Embedding dedup failed: ${error instanceof Error ? error.message : error}`,
-      );
-    }
-
-    return null;
   }
 
   /**

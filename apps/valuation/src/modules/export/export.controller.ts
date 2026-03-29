@@ -157,4 +157,25 @@ export class ExportController {
     promise.catch((err) => console.error('deactivateByRegion error:', err));
     return { started: true, regionGeoId: Number(geoId), message: `Deactivation by region started. Check GET /api/v1/export/progress for status.` };
   }
+
+  @Post('recheck-deactivated-region/:geoId')
+  @ApiOperation({ summary: 'Re-check deactivated objects in a region via photo dedup. Objects confirmed as non-duplicates will be reactivated on CRM. Duplicates saved for review.' })
+  async recheckDeactivatedRegion(
+    @Param('geoId') geoId: string,
+    @Body() body?: { limit?: number; dryRun?: boolean },
+  ) {
+    const promise = this.exportService.recheckDeactivatedRegion(
+      Number(geoId),
+      body?.limit,
+      body?.dryRun ?? false,
+    );
+    promise.catch((err) => console.error('recheckDeactivatedRegion error:', err));
+    return {
+      started: true,
+      regionGeoId: Number(geoId),
+      limit: body?.limit || 'all',
+      dryRun: body?.dryRun ?? false,
+      message: 'Recheck started. Results will be saved to /var/www/liquidity-define/recheck-results.json',
+    };
+  }
 }

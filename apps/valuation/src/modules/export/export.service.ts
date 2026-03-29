@@ -13,7 +13,7 @@ import { StreetMatcherService } from '../osm/street-matcher.service';
 import { ExportStatsDto } from './dto';
 
 /** Geo IDs of regions excluded from export (Odessa region + all children resolved at startup) */
-const EXCLUDED_REGION_IDS = [18263, 20479]; // Одеська та Львівська області
+const EXCLUDED_REGION_IDS = [20479]; // Львівська область
 
 @Injectable()
 export class ExportService {
@@ -1593,5 +1593,204 @@ export class ExportService {
         avgTimeMs: totalProcessed > 0 ? Math.round(stats.totalTimeMs / totalProcessed) : 0,
       },
     };
+  }
+
+  /**
+   * Re-check deactivated objects in a region via photo dedup.
+   * 1. Find deactivated objects (is_active=true, export_status='deactivated') in region
+   * 2. For each, run L1 (address) + L2 (geo 50m) dedup against CRM
+   * 3. If L1-L2 say duplicate → skip (confirmed duplicate)
+   * 4. If L1-L2 pass → find relaxed geo candidates (100m)
+   *    - If no candidates → mark as non-duplicate → reactivate on CRM
+   *    - If candidates → run photo dedup via GPT-4o
+   *      - SAME → confirmed duplicate, save for review
+   *      - DIFFERENT/UNCERTAIN → reactivate on CRM
+   *      - No photos → save as 'no_photos', don't reactivate
+   * 5. Save all results to JSON file for manual review
+   */
+  async recheckDeactivatedRegion(
+    regionGeoId: number,
+    limit?: number,
+    dryRun = false,
+  ): Promise<void> {
+    const fs = await import('fs');
+
+    // Resolve all geo IDs in region
+    const geoRows: { id: number }[] = await this.dataSource.query(`
+      WITH RECURSIVE excluded AS (
+        SELECT id FROM geo WHERE id = $1
+        UNION ALL
+        SELECT g.id FROM geo g JOIN excluded e ON g.parent_id = e.id
+      ) SELECT id FROM excluded
+    `, [regionGeoId]);
+    const geoIds = geoRows.map(r => r.id);
+    this.logger.log(`RecheckRegion: ${geoIds.length} geo IDs in region ${regionGeoId}`);
+
+    // Find deactivated objects (by us, not by platform)
+    const limitClause = limit ? `LIMIT ${limit}` : '';
+    const objects: any[] = await this.dataSource.query(`
+      SELECT id, source_id, realty_platform, geo_id, price, total_area, land_area,
+             rooms, realty_type, lat, lng, street_id, house_number, crm_external_id
+      FROM unified_listings
+      WHERE source_type = 'aggregator'
+        AND export_status = 'deactivated'
+        AND is_active = true
+        AND crm_external_id IS NOT NULL
+        AND geo_id = ANY($1::int[])
+      ORDER BY source_id
+      ${limitClause}
+    `, [geoIds]);
+
+    this.logger.log(`RecheckRegion: ${objects.length} deactivated objects to recheck`);
+
+    const results: any[] = [];
+    let reactivated = 0;
+    let confirmedDuplicates = 0;
+    let noPhotos = 0;
+    let errors = 0;
+    let l1l2Duplicates = 0;
+    let noCandidates = 0;
+
+    for (let i = 0; i < objects.length; i++) {
+      const obj = objects[i];
+      try {
+        // Load full listing
+        const rows = await this.dataSource.query(
+          `SELECT * FROM unified_listings WHERE id = $1`, [obj.id],
+        );
+        if (!rows.length) { errors++; continue; }
+        const listing = this.hydrate(rows[0]);
+
+        // L1: Address check
+        const dedupResult = await this.dedupCheckService.isDuplicate(listing);
+
+        if (dedupResult.isDuplicate && dedupResult.matchLevel === 'address') {
+          l1l2Duplicates++;
+          results.push({
+            index: i + 1,
+            listingId: obj.id,
+            sourceId: obj.source_id,
+            crmId: obj.crm_external_id,
+            platform: obj.realty_platform,
+            verdict: 'DUPLICATE_L1',
+            matchLevel: dedupResult.matchLevel,
+            matchedId: dedupResult.matchedId,
+          });
+          continue;
+        }
+
+        if (dedupResult.isDuplicate && dedupResult.matchLevel === 'geo') {
+          l1l2Duplicates++;
+          results.push({
+            index: i + 1,
+            listingId: obj.id,
+            sourceId: obj.source_id,
+            crmId: obj.crm_external_id,
+            platform: obj.realty_platform,
+            verdict: 'DUPLICATE_GEO',
+            matchLevel: dedupResult.matchLevel,
+            matchedId: dedupResult.matchedId,
+          });
+          continue;
+        }
+
+        // Photo dedup result
+        if (dedupResult.isDuplicate && dedupResult.matchLevel === 'photo') {
+          if (dedupResult.photoVerdict === 'ERROR' && !dedupResult.matchedId) {
+            // No photos on our object
+            noPhotos++;
+            results.push({
+              index: i + 1,
+              listingId: obj.id,
+              sourceId: obj.source_id,
+              crmId: obj.crm_external_id,
+              platform: obj.realty_platform,
+              verdict: 'NO_PHOTOS',
+            });
+            continue;
+          }
+
+          if (dedupResult.photoVerdict === 'SAME') {
+            confirmedDuplicates++;
+            results.push({
+              index: i + 1,
+              listingId: obj.id,
+              sourceId: obj.source_id,
+              crmId: obj.crm_external_id,
+              platform: obj.realty_platform,
+              verdict: 'DUPLICATE_PHOTO',
+              matchedId: dedupResult.matchedId,
+              confidence: dedupResult.similarity,
+            });
+            continue;
+          }
+        }
+
+        // Not a duplicate → reactivate on CRM
+        if (!dryRun) {
+          try {
+            const dto = await this.toCrmMapper.map(listing);
+            if (dto) {
+              const result = await this.crmClientService.importObject(dto);
+              if (result.success) {
+                await this.dataSource.query(
+                  `UPDATE unified_listings SET export_status = 'exported', last_exported_at = NOW() WHERE id = $1`,
+                  [obj.id],
+                );
+                reactivated++;
+              } else {
+                errors++;
+              }
+            } else {
+              errors++;
+            }
+          } catch (err) {
+            errors++;
+            this.logger.error(`RecheckRegion reactivate error for ${obj.source_id}: ${err}`);
+          }
+        } else {
+          reactivated++;
+        }
+
+        results.push({
+          index: i + 1,
+          listingId: obj.id,
+          sourceId: obj.source_id,
+          crmId: obj.crm_external_id,
+          platform: obj.realty_platform,
+          verdict: 'REACTIVATED',
+        });
+      } catch (err) {
+        errors++;
+        this.logger.error(`RecheckRegion error for ${obj.source_id}: ${err}`);
+      }
+
+      if ((i + 1) % 50 === 0) {
+        this.logger.log(`RecheckRegion progress: ${i + 1}/${objects.length} | reactivated=${reactivated} duplicates_l1l2=${l1l2Duplicates} duplicates_photo=${confirmedDuplicates} no_photos=${noPhotos} errors=${errors}`);
+      }
+    }
+
+    const summary = {
+      regionGeoId,
+      total: objects.length,
+      dryRun,
+      reactivated,
+      l1l2Duplicates,
+      confirmedDuplicates,
+      noCandidates,
+      noPhotos,
+      errors,
+      results: results.filter(r => r.verdict !== 'REACTIVATED'), // Only save non-reactivated for review
+    };
+
+    this.logger.log(`RecheckRegion complete: reactivated=${reactivated} l1l2_dup=${l1l2Duplicates} photo_dup=${confirmedDuplicates} no_photos=${noPhotos} errors=${errors}`);
+
+    // Save results file
+    fs.writeFileSync(
+      '/var/www/liquidity-define/recheck-results.json',
+      JSON.stringify(summary, null, 2),
+      'utf-8',
+    );
+    this.logger.log('RecheckRegion results saved to /var/www/liquidity-define/recheck-results.json');
   }
 }
